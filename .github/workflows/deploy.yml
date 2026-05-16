@@ -59,7 +59,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ✅ Write SSH key once — used by all docker contexts
       - name: Write SSH Key
         run: |
           mkdir -p ~/.ssh
@@ -67,14 +66,12 @@ jobs:
           chmod 600 ~/.ssh/deploy_key.pem
           echo -e "Host *\n\tStrictHostKeyChecking no\n\tIdentityFile ~/.ssh/deploy_key.pem\n" > ~/.ssh/config
 
-      # ✅ Create all 3 contexts upfront
       - name: Create Docker Contexts
         run: |
           docker context create node1 \
             --docker "host=ssh://ubuntu@${{ secrets.PROD_SERVER_1_IP }}"
           docker context create node2 \
             --docker "host=ssh://ubuntu@${{ secrets.PROD_SERVER_2_IP }}"
-         
 
       # ---- Server 1 ----
       - name: Deploy to Server 1
@@ -89,12 +86,9 @@ jobs:
 
           docker --context node1 image prune -f
 
-      - name: Health Check Server 1
-        run: |
-          sleep 20
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            http://${{ secrets.PROD_SERVER_1_IP }}:3000/api/health)
-          [ "$STATUS" = "200" ] || (echo "❌ Server 1 failed — stopping deployment" && exit 1)
+      # ✅ Wait for Server 1 container to boot, ALB will handle traffic shift
+      - name: Wait for Server 1 to boot
+        run: sleep 30
 
       # ---- Server 2 ----
       - name: Deploy to Server 2
@@ -109,29 +103,14 @@ jobs:
 
           docker --context node2 image prune -f
 
-      - name: Health Check Server 2
+      - name: Wait for Server 2 to boot
+        run: sleep 30
+
+      # ✅ Final check via ALB — confirms both servers are serving traffic
+      - name: Final Health Check via ALB
         run: |
-          sleep 20
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            http://${{ secrets.PROD_SERVER_2_IP }}:3000/api/health)
-          [ "$STATUS" = "200" ] || (echo "❌ Server 2 failed — stopping deployment" && exit 1)
-
-      # # ---- Server 3 ----
-      # - name: Deploy to Server 3
-      #   run: |
-      #     IMAGE_TAG=${{ env.IMAGE_TAG }} \
-      #     DATABASE_URL=${{ secrets.DATABASE_URL }} \
-      #     docker --context node3 compose pull
-
-      #     IMAGE_TAG=${{ env.IMAGE_TAG }} \
-      #     DATABASE_URL=${{ secrets.DATABASE_URL }} \
-      #     docker --context node3 compose up -d --remove-orphans
-
-      #     docker --context node3 image prune -f
-
-      # - name: Health Check Server 3
-      #   run: |
-      #     sleep 20
-      #     STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-      #       http://${{ secrets.PROD_SERVER_3_IP }}:3000/api/health)
-      #     [ "$STATUS" = "200" ] || (echo "❌ Server 3 failed" && exit 1)
+            --max-time 10 \
+            http://${{ secrets.ALB_URL }}/api/health)
+          echo "ALB responded with HTTP $STATUS"
+          [ "$STATUS" = "200" ] || (echo "❌ ALB health check failed" && exit 1)

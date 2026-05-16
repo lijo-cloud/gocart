@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  app:
+    image: ${IMAGE_TAG}
+    restart: always
+    deploy:
+      replicas: 4
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+    ports:
+      - "3000-3003:3000"
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+      DATABASE_URL: ${DATABASE_URL}

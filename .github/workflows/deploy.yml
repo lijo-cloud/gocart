@@ -6,7 +6,7 @@ on:
       - main
 
 env:
-  DOCKER_IMAGE: "ghcr.io/${{ lijo-cloud }}/gocart"
+  DOCKER_IMAGE: "ghcr.io/lijo-cloud/gocart"
   INSTANCE_1_IP: ${{ secrets.PROD_SERVER_1_IP }}
   INSTANCE_2_IP: ${{ secrets.PROD_SERVER_2_IP }}
 
@@ -22,7 +22,7 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
-      
+
       - id: vars
         run: echo "short_sha=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_OUTPUT
 
@@ -77,7 +77,7 @@ jobs:
         run: |
           # 1. Create a native connection map straight to Server 1
           docker context create node1 --docker "host=ssh://ubuntu@${{ env.INSTANCE_1_IP }}"
-          
+
           # 2. Execute Docker Compose inside the Node 1 context
           docker --context node1 compose pull
           docker --context node1 compose up -d --remove-orphans
@@ -90,7 +90,7 @@ jobs:
         run: |
           # 1. Create a native connection map straight to Server 2
           docker context create node2 --docker "host=ssh://ubuntu@${{ env.INSTANCE_2_IP }}"
-          
+
           # 2. Execute Docker Compose inside the Node 2 context
           docker --context node2 compose pull
           docker --context node2 compose up -d --remove-orphans

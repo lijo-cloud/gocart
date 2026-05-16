@@ -45,7 +45,6 @@ jobs:
         with:
           context: .
           push: true
-          no-cache: true
           tags: |
             ${{ steps.string.outputs.image_lower }}:latest
             ${{ steps.string.outputs.image_lower }}:${{ steps.vars.outputs.short_sha }}

@@ -1,4 +1,4 @@
-name: Production SaaS Deployment (Docker Contexts)
+name: Production Deployment
 
 on:
   push:
@@ -7,8 +7,6 @@ on:
 
 env:
   DOCKER_IMAGE: "ghcr.io/lijo-cloud/gocart"
-  INSTANCE_1_IP: ${{ secrets.PROD_SERVER_1_IP }}
-  INSTANCE_2_IP: ${{ secrets.PROD_SERVER_2_IP }}
 
 jobs:
   build_and_push:
@@ -16,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       short_sha: ${{ steps.vars.outputs.short_sha }}
-      image_lower: ${{ steps.string.outputs.image_lower }}
+      image_tag: ${{ steps.vars.outputs.image_tag }}
     permissions:
       contents: read
       packages: write
@@ -24,7 +22,11 @@ jobs:
       - uses: actions/checkout@v4
 
       - id: vars
-        run: echo "short_sha=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_OUTPUT
+        run: |
+          SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)
+          IMAGE=$(echo ${{ env.DOCKER_IMAGE }} | tr '[:upper:]' '[:lower:]')
+          echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+          echo "image_tag=$IMAGE:$SHORT_SHA" >> $GITHUB_OUTPUT
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -36,62 +38,100 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Convert Image Name to Lowercase
-        id: string
-        run: echo "image_lower=$(echo ${{ env.DOCKER_IMAGE }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
-
-      - name: Build and Push Standalone Container
+      - name: Build and Push
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
           tags: |
-            ${{ steps.string.outputs.image_lower }}:latest
-            ${{ steps.string.outputs.image_lower }}:${{ steps.vars.outputs.short_sha }}
+            ${{ steps.vars.outputs.image_tag }}
+            ghcr.io/lijo-cloud/gocart:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
   deploy:
-    name: Native Docker Rolling Deployment
+    name: Rolling Deploy
     runs-on: ubuntu-latest
     needs: build_and_push
-    if: github.ref == 'refs/heads/main'
     env:
-      IMAGE_TAG: ${{ needs.build_and_push.outputs.image_lower }}:${{ needs.build_and_push.outputs.short_sha }}
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      IMAGE_TAG: ${{ needs.build_and_push.outputs.image_tag }}
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure SSH Key & Agent
+      # ✅ Write SSH key once — used by all docker contexts
+      - name: Write SSH Key
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key.pem
           chmod 600 ~/.ssh/deploy_key.pem
-          echo -e "Host *\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
-          # Start SSH agent and load the key so Docker can read it natively
-          eval $(ssh-agent -s)
-          ssh-add ~/.ssh/deploy_key.pem
-          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> $GITHUB_ENV
+          echo -e "Host *\n\tStrictHostKeyChecking no\n\tIdentityFile ~/.ssh/deploy_key.pem\n" > ~/.ssh/config
 
-      - name: Deploy to NxtGen Server 1
+      # ✅ Create all 3 contexts upfront
+      - name: Create Docker Contexts
         run: |
-          # 1. Create a native connection map straight to Server 1
-          docker context create node1 --docker "host=ssh://ubuntu@${{ env.INSTANCE_1_IP }}"
+          docker context create node1 \
+            --docker "host=ssh://ubuntu@${{ secrets.PROD_SERVER_1_IP }}"
+          docker context create node2 \
+            --docker "host=ssh://ubuntu@${{ secrets.PROD_SERVER_2_IP }}"
+         
 
-          # 2. Execute Docker Compose inside the Node 1 context
+      # ---- Server 1 ----
+      - name: Deploy to Server 1
+        run: |
+          IMAGE_TAG=${{ env.IMAGE_TAG }} \
+          DATABASE_URL=${{ secrets.DATABASE_URL }} \
           docker --context node1 compose pull
+
+          IMAGE_TAG=${{ env.IMAGE_TAG }} \
+          DATABASE_URL=${{ secrets.DATABASE_URL }} \
           docker --context node1 compose up -d --remove-orphans
+
           docker --context node1 image prune -f
 
-      - name: Rolling Deployment Delay
-        run: sleep 20 # Gives Server 1 time to boot up and load balancer to shift traffic
-
-      - name: Deploy to NxtGen Server 2
+      - name: Health Check Server 1
         run: |
-          # 1. Create a native connection map straight to Server 2
-          docker context create node2 --docker "host=ssh://ubuntu@${{ env.INSTANCE_2_IP }}"
+          sleep 20
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            http://${{ secrets.PROD_SERVER_1_IP }}:3000/api/health)
+          [ "$STATUS" = "200" ] || (echo "❌ Server 1 failed — stopping deployment" && exit 1)
 
-          # 2. Execute Docker Compose inside the Node 2 context
+      # ---- Server 2 ----
+      - name: Deploy to Server 2
+        run: |
+          IMAGE_TAG=${{ env.IMAGE_TAG }} \
+          DATABASE_URL=${{ secrets.DATABASE_URL }} \
           docker --context node2 compose pull
+
+          IMAGE_TAG=${{ env.IMAGE_TAG }} \
+          DATABASE_URL=${{ secrets.DATABASE_URL }} \
           docker --context node2 compose up -d --remove-orphans
+
           docker --context node2 image prune -f
+
+      - name: Health Check Server 2
+        run: |
+          sleep 20
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            http://${{ secrets.PROD_SERVER_2_IP }}:3000/api/health)
+          [ "$STATUS" = "200" ] || (echo "❌ Server 2 failed — stopping deployment" && exit 1)
+
+      # # ---- Server 3 ----
+      # - name: Deploy to Server 3
+      #   run: |
+      #     IMAGE_TAG=${{ env.IMAGE_TAG }} \
+      #     DATABASE_URL=${{ secrets.DATABASE_URL }} \
+      #     docker --context node3 compose pull
+
+      #     IMAGE_TAG=${{ env.IMAGE_TAG }} \
+      #     DATABASE_URL=${{ secrets.DATABASE_URL }} \
+      #     docker --context node3 compose up -d --remove-orphans
+
+      #     docker --context node3 image prune -f
+
+      # - name: Health Check Server 3
+      #   run: |
+      #     sleep 20
+      #     STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+      #       http://${{ secrets.PROD_SERVER_3_IP }}:3000/api/health)
+      #     [ "$STATUS" = "200" ] || (echo "❌ Server 3 failed" && exit 1)

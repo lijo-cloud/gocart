@@ -6,7 +6,7 @@ on:
       - main
 
 env:
-  DOCKER_IMAGE: ghcr.io/${{ lijo-cloud }}/gocart
+  DOCKER_IMAGE: "ghcr.io/${{ lijo-cloud }}/gocart"
   INSTANCE_1_IP: ${{ secrets.PROD_SERVER_1_IP }}
   INSTANCE_2_IP: ${{ secrets.PROD_SERVER_2_IP }}
 

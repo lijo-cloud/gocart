@@ -117,12 +117,20 @@ jobs:
 
       - name: Health Check Staging
         run: |
-          sleep 30
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            --max-time 10 \
-            http://${{ vars.STAGING_SERVER_IP }}:3000/api/health || echo "000")
-          echo "Staging: HTTP $STATUS"
-          [ "$STATUS" = "200" ] || (echo "❌ Staging unhealthy" && exit 1)
+          echo "⏳ Waiting for Staging to be healthy (max 120s)..."
+          for i in {1..12}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              --max-time 10 \
+              http://${{ vars.STAGING_SERVER_IP }}:3000/api/health 2>/dev/null || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "✅ Staging healthy! HTTP $STATUS"
+              exit 0
+            fi
+            echo "Attempt $i/12: HTTP $STATUS"
+            sleep 10
+          done
+          echo "❌ Staging failed health check after 120s"
+          exit 1
 
   approve_production:
     name: Approve Production
@@ -172,8 +180,21 @@ jobs:
 
           docker --context node1 image prune -f
 
-      - name: Wait for Server 1
-        run: sleep 30
+      - name: Health Check Server 1
+        run: |
+          echo "⏳ Waiting for Server 1 to be healthy (max 120s)..."
+          for i in {1..12}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              --max-time 10 \
+              http://${{ vars.PROD_SERVER_1_IP }}:3000/api/health 2>/dev/null || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "✅ Server 1 healthy! HTTP $STATUS"
+              break
+            fi
+            echo "Attempt $i/12: HTTP $STATUS"
+            sleep 10
+          done
+          [ "$STATUS" = "200" ] || (echo "❌ Server 1 unhealthy after 120s" && exit 1)
 
       # ---- Server 2 ----
       - name: Deploy to Server 2
@@ -188,17 +209,39 @@ jobs:
 
           docker --context node2 image prune -f
 
-      - name: Wait for Server 2
-        run: sleep 30
+      - name: Health Check Server 2
+        run: |
+          echo "⏳ Waiting for Server 2 to be healthy (max 120s)..."
+          for i in {1..12}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              --max-time 10 \
+              http://${{ vars.PROD_SERVER_2_IP }}:3000/api/health 2>/dev/null || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "✅ Server 2 healthy! HTTP $STATUS"
+              break
+            fi
+            echo "Attempt $i/12: HTTP $STATUS"
+            sleep 10
+          done
+          [ "$STATUS" = "200" ] || (echo "❌ Server 2 unhealthy after 120s" && exit 1)
 
       # ---- Final ALB check ----
       - name: Final Health Check via ALB
         run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            --max-time 10 \
-            http://${{ secrets.ALB_URL }}/api/health || echo "000")
-          echo "ALB: HTTP $STATUS"
-          [ "$STATUS" = "200" ] || (echo "❌ ALB check failed" && exit 1)
+          echo "⏳ Checking ALB health (max 60s)..."
+          for i in {1..6}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              --max-time 10 \
+              http://${{ secrets.ALB_URL }}/api/health 2>/dev/null || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "✅ ALB healthy! HTTP $STATUS"
+              exit 0
+            fi
+            echo "Attempt $i/6: HTTP $STATUS"
+            sleep 10
+          done
+          echo "❌ ALB check failed after 60s"
+          exit 1
 
       # ✅ Tag as stable after successful deploy
       - name: Tag as stable

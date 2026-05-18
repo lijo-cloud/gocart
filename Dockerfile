@@ -19,15 +19,17 @@ ENV HOSTNAME="0.0.0.0"
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
+# Copy standalone app and static files
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-# ✅ Missing — this is why client side crashes
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
-# ✅ Health check for Docker and ALB
-HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
+# ✅ Extended health check for Docker and ALB - increased start period to 60s
+HEALTHCHECK --interval=10s --timeout=5s --start-period=60s --retries=5 \
   CMD node -e "require('http').get('http://localhost:3000/api/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
 
 USER nextjs
 EXPOSE 3000
+
+# Run the standalone Next.js server
 CMD ["node", "server.js"]

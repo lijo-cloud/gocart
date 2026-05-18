@@ -64,5 +64,34 @@ jobs:
             docker compose up -d --remove-orphans
             docker image prune -f
 
-      - name: Wait for container to boot
-        run: sleep 30
+      - name: Wait for container to be healthy
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ inputs.host }}
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /app
+            echo "⏳ Waiting for container to be healthy..."
+            CONTAINER=$(docker compose -f docker-compose.yml ps -q app)
+            if [ -z "$CONTAINER" ]; then
+              echo "❌ Container not found"
+              exit 1
+            fi
+            
+            # Wait max 120 seconds for container to be healthy
+            HEALTH_STATUS=""
+            for i in {1..12}; do
+              HEALTH_STATUS=$(docker inspect --format='{{.State.Health.Status}}' $CONTAINER 2>/dev/null || echo "none")
+              if [ "$HEALTH_STATUS" = "healthy" ]; then
+                echo "✅ Container is healthy!"
+                exit 0
+              fi
+              echo "Attempt $i/12: Status = $HEALTH_STATUS"
+              sleep 10
+            done
+            
+            echo "❌ Container failed to reach healthy state after 120 seconds"
+            echo "Docker logs:"
+            docker compose logs app --tail=50
+            exit 1

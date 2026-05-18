@@ -14,6 +14,10 @@ on:
         required: true
       DATABASE_URL:
         required: true
+      GH_PAT:
+        required: true
+      GH_USERNAME:
+        required: true
 
 jobs:
   deploy:
@@ -21,7 +25,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Save current image before replacing — used by rollback
       - name: Save current image for rollback
         uses: appleboy/ssh-action@v1
         with:
@@ -52,10 +55,11 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd /app
+            # ✅ PAT works reliably in reusable workflows
+            echo "${{ secrets.GH_PAT }}" | docker login ghcr.io \
+              -u ${{ secrets.GH_USERNAME }} --password-stdin
             export IMAGE_TAG=${{ inputs.image_tag }}
             export DATABASE_URL=${{ secrets.DATABASE_URL }}
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io \
-              -u ${{ github.actor }} --password-stdin
             docker compose pull
             docker compose up -d --remove-orphans
             docker image prune -f

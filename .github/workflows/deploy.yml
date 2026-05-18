@@ -114,6 +114,8 @@ jobs:
     secrets:
       SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      GH_PAT: ${{ secrets.GH_PAT }}
+      GH_USERNAME: ${{ secrets.GH_USERNAME }}
 
   staging_health_check:
     name: Staging Health Check
@@ -152,6 +154,8 @@ jobs:
     secrets:
       SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      GH_PAT: ${{ secrets.GH_PAT }}
+      GH_USERNAME: ${{ secrets.GH_USERNAME }}
 
   deploy_prod_server2:
     name: Deploy Server 2
@@ -163,6 +167,8 @@ jobs:
     secrets:
       SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      GH_PAT: ${{ secrets.GH_PAT }}
+      GH_USERNAME: ${{ secrets.GH_USERNAME }}
 
   # ────────────────────────────────
   # 7. FINAL CHECK + ROLLBACK
@@ -196,3 +202,10 @@ jobs:
             export DATABASE_URL=${{ secrets.DATABASE_URL }}
             docker compose up -d --remove-orphans
             echo "✅ Rollback complete"
+
+      # - name: Notify on failure
+      #   if: failure()
+      #   run: |
+      #    curl -X POST ${{ secrets.SLACK_WEBHOOK }} \
+      #    -H 'Content-type: application/json' \
+      #    -d '{"text":"❌ Production deploy failed for ${{ env.IMAGE_TAG }}"}'

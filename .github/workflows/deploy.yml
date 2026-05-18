@@ -10,36 +10,29 @@ env:
 
 jobs:
   # ────────────────────────────────
-  # 1. TESTS — run before anything
+  # 1. TESTS
   # ────────────────────────────────
   test:
-    name: Run Tests
+    name: Tests & Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: 'npm'
 
-      - name: Install dependencies
-        run: npm ci
-
-      # ✅ Run your actual tests
-      - name: Run tests
-        run: npm test --if-present
-
-      # ✅ Lint check
-      - name: Run lint
-        run: npm run lint --if-present
+      - run: npm ci
+      - run: npm test --if-present
+      - run: npm run lint --if-present
+      - run: npm audit --audit-level=high
 
   # ────────────────────────────────
-  # 2. BUILD & PUSH
+  # 2. BUILD
   # ────────────────────────────────
   build_and_push:
-    name: Build & Push to GHCR
+    name: Build & Push
     runs-on: ubuntu-latest
     needs: test
     outputs:
@@ -56,94 +49,84 @@ jobs:
           IMAGE=$(echo ${{ env.DOCKER_IMAGE }} | tr '[:upper:]' '[:lower:]')
           echo "image_tag=$IMAGE:$SHORT_SHA" >> $GITHUB_OUTPUT
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v3
 
-      - name: Login to GHCR
-        uses: docker/login-action@v3
+      - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and Push
-        uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          tags: |
-            ${{ steps.vars.outputs.image_tag }}
-            ghcr.io/lijo-cloud/gocart:latest
+          tags: ${{ steps.vars.outputs.image_tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
   # ────────────────────────────────
-  # 3. SECURITY SCAN — Trivy
+  # 3. SECURITY SCAN
   # ────────────────────────────────
   security_scan:
-    name: Container Security Scan
+    name: Trivy Security Scan
     runs-on: ubuntu-latest
     needs: build_and_push
     permissions:
       contents: read
       packages: read
-      security-events: write   # needed to upload SARIF results
+      security-events: write
     steps:
       - uses: actions/checkout@v4
 
-      - name: Login to GHCR
-        uses: docker/login-action@v3
+      - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # ✅ Trivy scans your image for CVEs
-      - name: Scan image with Trivy
+      - name: Scan image
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ needs.build_and_push.outputs.image_tag }}
           format: sarif
           output: trivy-results.sarif
-          # ✅ Only fail on HIGH and CRITICAL vulnerabilities
           severity: HIGH,CRITICAL
           exit-code: '1'
           ignore-unfixed: true
 
-      # ✅ Upload results to GitHub Security tab
-      - name: Upload Trivy results to GitHub Security
+      - name: Upload to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: trivy-results.sarif
 
   # ────────────────────────────────
-  # 4. STAGING DEPLOY
+  # 4. STAGING
   # ────────────────────────────────
   deploy_staging:
-    name: Deploy to Staging
+    name: Deploy Staging
     needs: [build_and_push, security_scan]
     uses: ./.github/workflows/deploy-server.yml
     with:
-      host: ${{ secrets.STAGING_SERVER_IP }}
+      host: ${{ vars.STAGING_SERVER_IP }}
       image_tag: ${{ needs.build_and_push.outputs.image_tag }}
     secrets:
       SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-  # ✅ Health check staging before asking for approval
   staging_health_check:
     name: Staging Health Check
     runs-on: ubuntu-latest
-    needs: [deploy_staging]
+    needs: deploy_staging
     steps:
-      - name: Check Staging
+      - name: Check staging is alive
         run: |
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
             --max-time 10 \
-            http://${{ secrets.STAGING_SERVER_IP }}:3000/api/health || echo "000")
+            http://${{ vars.STAGING_SERVER_IP }}:3000/api/health || echo "000")
           echo "Staging: HTTP $STATUS"
-          [ "$STATUS" = "200" ] || (echo "❌ Staging unhealthy — fix before approving production" && exit 1)
+          [ "$STATUS" = "200" ] || (echo "❌ Staging unhealthy — production untouched" && exit 1)
 
   # ────────────────────────────────
   # 5. MANUAL APPROVAL
@@ -154,17 +137,17 @@ jobs:
     needs: staging_health_check
     environment: production
     steps:
-      - run: echo "✅ Approved — deploying to production"
+      - run: echo "✅ Approved"
 
   # ────────────────────────────────
-  # 6. PRODUCTION DEPLOY
+  # 6. PRODUCTION — rolling deploy
   # ────────────────────────────────
   deploy_prod_server1:
     name: Deploy Server 1
     needs: [build_and_push, approve_production]
     uses: ./.github/workflows/deploy-server.yml
     with:
-      host: ${{ secrets.PROD_SERVER_1_IP }}
+      host: ${{ vars.PROD_SERVER_1_IP }}
       image_tag: ${{ needs.build_and_push.outputs.image_tag }}
     secrets:
       SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
@@ -175,7 +158,7 @@ jobs:
     needs: [build_and_push, deploy_prod_server1]
     uses: ./.github/workflows/deploy-server.yml
     with:
-      host: ${{ secrets.PROD_SERVER_2_IP }}
+      host: ${{ vars.PROD_SERVER_2_IP }}
       image_tag: ${{ needs.build_and_push.outputs.image_tag }}
     secrets:
       SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
@@ -185,7 +168,7 @@ jobs:
   # 7. FINAL CHECK + ROLLBACK
   # ────────────────────────────────
   final_check:
-    name: Final Health Check
+    name: Final Health Check & Rollback
     runs-on: ubuntu-latest
     needs: deploy_prod_server2
     steps:
@@ -197,17 +180,19 @@ jobs:
           echo "ALB: HTTP $STATUS"
           [ "$STATUS" = "200" ] || (echo "❌ ALB check failed" && exit 1)
 
-      # ✅ Rollback both servers if ALB check fails
       - name: Rollback on Failure
         if: failure()
         uses: appleboy/ssh-action@v1
         with:
-          host: "${{ secrets.PROD_SERVER_1_IP }},${{ secrets.PROD_SERVER_2_IP }}"
+          host: "${{ vars.PROD_SERVER_1_IP }},${{ vars.PROD_SERVER_2_IP }}"
           username: ubuntu
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd /app
-            export IMAGE_TAG=ghcr.io/lijo-cloud/gocart:latest
+            PREV=$(cat /app/previous_image.txt 2>/dev/null \
+              || echo "ghcr.io/lijo-cloud/gocart:latest")
+            echo "⚠️ Rolling back to: $PREV"
+            export IMAGE_TAG=$PREV
             export DATABASE_URL=${{ secrets.DATABASE_URL }}
             docker compose up -d --remove-orphans
-            echo "⚠️ Rolled back to latest stable image"
+            echo "✅ Rollback complete"

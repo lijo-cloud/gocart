@@ -21,6 +21,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Save current image before replacing — used by rollback
+      - name: Save current image for rollback
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ inputs.host }}
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            docker inspect $(docker compose -f /app/docker-compose.yml ps -q app 2>/dev/null) \
+              --format='{{index .Config.Image}}' 2>/dev/null \
+              > /app/previous_image.txt \
+              || echo "ghcr.io/lijo-cloud/gocart:latest" > /app/previous_image.txt
+            echo "Saved: $(cat /app/previous_image.txt)"
+
       - name: Copy compose file
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -46,6 +60,5 @@ jobs:
             docker compose up -d --remove-orphans
             docker image prune -f
 
-      # ✅ Wait for container to boot
-      - name: Wait for container
+      - name: Wait for container to boot
         run: sleep 30

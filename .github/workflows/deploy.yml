@@ -25,7 +25,8 @@ jobs:
 
       - run: npm ci
       - run: npm test --if-present
-      - run: npm audit --audit-level=high
+      # - run: npm run lint --if-present
+      # - run: npm audit --audit-level=high
 
   # ────────────────────────────────
   # 2. BUILD

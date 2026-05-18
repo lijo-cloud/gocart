@@ -9,9 +9,6 @@ env:
   DOCKER_IMAGE: "ghcr.io/lijo-cloud/gocart"
 
 jobs:
-  # ────────────────────────────────
-  # 1. TESTS
-  # ────────────────────────────────
   test:
     name: Tests
     runs-on: ubuntu-latest
@@ -25,9 +22,6 @@ jobs:
       # - run: npm test --if-present
       # - run: npm audit --audit-level=high
 
-  # ────────────────────────────────
-  # 2. BUILD
-  # ────────────────────────────────
   build_and_push:
     name: Build & Push
     runs-on: ubuntu-latest
@@ -58,16 +52,12 @@ jobs:
         with:
           context: .
           push: true
-          # ✅ SHA tag only — :stable tagged after successful prod deploy
           tags: ${{ steps.vars.outputs.image_tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # ────────────────────────────────
-  # 3. SECURITY SCAN
-  # ────────────────────────────────
   security_scan:
-    name: Trivy Security Scan
+    name: Trivy Scan
     runs-on: ubuntu-latest
     needs: build_and_push
     permissions:
@@ -91,9 +81,6 @@ jobs:
           exit-code: '0'
           ignore-unfixed: true
 
-  # ────────────────────────────────
-  # 4. STAGING
-  # ────────────────────────────────
   deploy_staging:
     name: Deploy Staging
     runs-on: ubuntu-latest
@@ -119,11 +106,15 @@ jobs:
         run: |
           IMAGE_TAG=${{ env.IMAGE_TAG }} \
           DATABASE_URL=${{ secrets.DATABASE_URL }} \
+          docker --context staging compose down --remove-orphans || true
+
+          IMAGE_TAG=${{ env.IMAGE_TAG }} \
+          DATABASE_URL=${{ secrets.DATABASE_URL }} \
           docker --context staging compose pull
 
           IMAGE_TAG=${{ env.IMAGE_TAG }} \
           DATABASE_URL=${{ secrets.DATABASE_URL }} \
-          docker --context staging compose up -d --remove-orphans
+          docker --context staging compose up -d
 
           docker --context staging image prune -f
 
@@ -136,9 +127,6 @@ jobs:
           echo "Staging: HTTP $STATUS"
           [ "$STATUS" = "200" ] || (echo "❌ Staging unhealthy" && exit 1)
 
-  # ────────────────────────────────
-  # 5. MANUAL APPROVAL
-  # ────────────────────────────────
   approve_production:
     name: Approve Production
     runs-on: ubuntu-latest
@@ -147,9 +135,6 @@ jobs:
     steps:
       - run: echo "✅ Approved"
 
-  # ────────────────────────────────
-  # 6. PRODUCTION
-  # ────────────────────────────────
   deploy_production:
     name: Deploy Production
     runs-on: ubuntu-latest
@@ -178,11 +163,15 @@ jobs:
         run: |
           IMAGE_TAG=${{ env.IMAGE_TAG }} \
           DATABASE_URL=${{ secrets.DATABASE_URL }} \
+          docker --context node1 compose down --remove-orphans || true
+
+          IMAGE_TAG=${{ env.IMAGE_TAG }} \
+          DATABASE_URL=${{ secrets.DATABASE_URL }} \
           docker --context node1 compose pull
 
           IMAGE_TAG=${{ env.IMAGE_TAG }} \
           DATABASE_URL=${{ secrets.DATABASE_URL }} \
-          docker --context node1 compose up -d --remove-orphans
+          docker --context node1 compose up -d
 
           docker --context node1 image prune -f
 
@@ -194,11 +183,15 @@ jobs:
         run: |
           IMAGE_TAG=${{ env.IMAGE_TAG }} \
           DATABASE_URL=${{ secrets.DATABASE_URL }} \
+          docker --context node2 compose down --remove-orphans || true
+
+          IMAGE_TAG=${{ env.IMAGE_TAG }} \
+          DATABASE_URL=${{ secrets.DATABASE_URL }} \
           docker --context node2 compose pull
 
           IMAGE_TAG=${{ env.IMAGE_TAG }} \
           DATABASE_URL=${{ secrets.DATABASE_URL }} \
-          docker --context node2 compose up -d --remove-orphans
+          docker --context node2 compose up -d
 
           docker --context node2 image prune -f
 
@@ -214,7 +207,7 @@ jobs:
           echo "ALB: HTTP $STATUS"
           [ "$STATUS" = "200" ] || (echo "❌ ALB check failed" && exit 1)
 
-      # ✅ Tag as :stable only after ALB confirms healthy
+      # ✅ Tag as stable after successful deploy
       - name: Tag as stable
         if: success()
         run: |
@@ -224,20 +217,20 @@ jobs:
           docker buildx imagetools create \
             --tag ghcr.io/lijo-cloud/gocart:stable \
             ${{ env.IMAGE_TAG }}
-          echo "✅ Tagged ${{ env.IMAGE_TAG }} as stable"
+          echo "✅ ${{ env.IMAGE_TAG }} tagged as stable"
 
-      # ✅ Rollback to :stable — always the last working production image
+      # ✅ Rollback to last stable on failure
       - name: Rollback on Failure
         if: failure()
         run: |
-          echo "⚠️ Rolling back to stable image"
+          echo "⚠️ Rolling back to stable"
 
           IMAGE_TAG=ghcr.io/lijo-cloud/gocart:stable \
           DATABASE_URL=${{ secrets.DATABASE_URL }} \
-          docker --context node1 compose up -d --remove-orphans || true
+          docker --context node1 compose up -d || true
 
           IMAGE_TAG=ghcr.io/lijo-cloud/gocart:stable \
           DATABASE_URL=${{ secrets.DATABASE_URL }} \
-          docker --context node2 compose up -d --remove-orphans || true
+          docker --context node2 compose up -d || true
 
           echo "✅ Rollback complete"

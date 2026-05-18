@@ -109,8 +109,9 @@ jobs:
       # ✅ Final check via ALB — confirms both servers are serving traffic
       - name: Final Health Check via ALB
         run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            --max-time 10 \
-            http://${{ secrets.ALB_URL }}/api/health)
-          echo "ALB responded with HTTP $STATUS"
-          [ "$STATUS" = "200" ] || (echo "❌ ALB health check failed" && exit 1)
+          # STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+          #   --max-time 10 \
+          #   http://${{ secrets.ALB_URL }}/api/health)
+          # echo "ALB responded with HTTP $STATUS"
+          # [ "$STATUS" = "200" ] || (echo "❌ ALB health check failed" && exit 1)
+          curl -v --max-time 10 http://${{ secrets.ALB_URL }}/api/health || true

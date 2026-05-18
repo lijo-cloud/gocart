@@ -90,6 +90,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # ✅ Fixed SSH — use config file instead of ssh-agent
       - name: Write SSH Key
         run: |
           mkdir -p ~/.ssh
@@ -106,15 +107,11 @@ jobs:
         run: |
           IMAGE_TAG=${{ env.IMAGE_TAG }} \
           DATABASE_URL=${{ secrets.DATABASE_URL }} \
-          docker --context staging compose down --remove-orphans || true
-
-          IMAGE_TAG=${{ env.IMAGE_TAG }} \
-          DATABASE_URL=${{ secrets.DATABASE_URL }} \
           docker --context staging compose pull
 
           IMAGE_TAG=${{ env.IMAGE_TAG }} \
           DATABASE_URL=${{ secrets.DATABASE_URL }} \
-          docker --context staging compose up -d
+          docker --context staging compose up -d --remove-orphans
 
           docker --context staging image prune -f
 
@@ -143,10 +140,11 @@ jobs:
       IMAGE_TAG: ${{ needs.build_and_push.outputs.image_tag }}
     permissions:
       contents: read
-      packages: write     
+      packages: write
     steps:
       - uses: actions/checkout@v4
 
+      # ✅ Fixed SSH — use config file instead of ssh-agent
       - name: Write SSH Key
         run: |
           mkdir -p ~/.ssh
@@ -166,15 +164,11 @@ jobs:
         run: |
           IMAGE_TAG=${{ env.IMAGE_TAG }} \
           DATABASE_URL=${{ secrets.DATABASE_URL }} \
-          docker --context node1 compose down --remove-orphans || true
-
-          IMAGE_TAG=${{ env.IMAGE_TAG }} \
-          DATABASE_URL=${{ secrets.DATABASE_URL }} \
           docker --context node1 compose pull
 
           IMAGE_TAG=${{ env.IMAGE_TAG }} \
           DATABASE_URL=${{ secrets.DATABASE_URL }} \
-          docker --context node1 compose up -d
+          docker --context node1 compose up -d --remove-orphans
 
           docker --context node1 image prune -f
 
@@ -186,15 +180,11 @@ jobs:
         run: |
           IMAGE_TAG=${{ env.IMAGE_TAG }} \
           DATABASE_URL=${{ secrets.DATABASE_URL }} \
-          docker --context node2 compose down --remove-orphans || true
-
-          IMAGE_TAG=${{ env.IMAGE_TAG }} \
-          DATABASE_URL=${{ secrets.DATABASE_URL }} \
           docker --context node2 compose pull
 
           IMAGE_TAG=${{ env.IMAGE_TAG }} \
           DATABASE_URL=${{ secrets.DATABASE_URL }} \
-          docker --context node2 compose up -d
+          docker --context node2 compose up -d --remove-orphans
 
           docker --context node2 image prune -f
 
@@ -220,20 +210,19 @@ jobs:
           docker buildx imagetools create \
             --tag ghcr.io/lijo-cloud/gocart:stable \
             ${{ env.IMAGE_TAG }}
-          echo "✅ ${{ env.IMAGE_TAG }} tagged as stable"
+          echo "✅ Tagged as stable"
 
       # ✅ Rollback to last stable on failure
       - name: Rollback on Failure
         if: failure()
         run: |
           echo "⚠️ Rolling back to stable"
+          IMAGE_TAG=ghcr.io/lijo-cloud/gocart:stable \
+          DATABASE_URL=${{ secrets.DATABASE_URL }} \
+          docker --context node1 compose up -d --remove-orphans || true
 
           IMAGE_TAG=ghcr.io/lijo-cloud/gocart:stable \
           DATABASE_URL=${{ secrets.DATABASE_URL }} \
-          docker --context node1 compose up -d || true
-
-          IMAGE_TAG=ghcr.io/lijo-cloud/gocart:stable \
-          DATABASE_URL=${{ secrets.DATABASE_URL }} \
-          docker --context node2 compose up -d || true
+          docker --context node2 compose up -d --remove-orphans || true
 
           echo "✅ Rollback complete"

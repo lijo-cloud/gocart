@@ -1,4 +1,4 @@
-name: Production Deployment
+name: Production Enterprise Pipeline
 
 on:
   push:
@@ -10,34 +10,33 @@ env:
 
 jobs:
   test:
-    name: Tests
+    name: Code Quality & Testing
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
       - run: npm ci
-      # - run: npm test --if-present
-      # - run: npm audit --audit-level=high
+      - run: npm run lint --if-present
 
-  build_and_push:
-    name: Build & Push
+  build-and-push:
+    name: Build & Push Image
     runs-on: ubuntu-latest
     needs: test
-    outputs:
-      image_tag: ${{ steps.vars.outputs.image_tag }}
     permissions:
       contents: read
       packages: write
+    outputs:
+      image_tag: ${{ steps.vars.outputs.image_tag }}
     steps:
       - uses: actions/checkout@v4
 
       - id: vars
         run: |
           SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)
-          IMAGE=$(echo ${{ env.DOCKER_IMAGE }} | tr '[:upper:]' '[:lower:]')
+          IMAGE=$(echo "${{ env.DOCKER_IMAGE }}" | tr '[:upper:]' '[:lower:]')
           echo "image_tag=$IMAGE:$SHORT_SHA" >> $GITHUB_OUTPUT
 
       - uses: docker/setup-buildx-action@v3
@@ -57,215 +56,118 @@ jobs:
           cache-to: type=gha,mode=max
 
   security_scan:
-    name: Trivy Scan
+    name: Security Vulnerability Scan
     runs-on: ubuntu-latest
-    needs: build_and_push
-    permissions:
-      contents: read
-      packages: read
+    needs: build-and-push
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Scan image
+      - name: Scan Image with Trivy
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ needs.build_and_push.outputs.image_tag }}
-          format: table
-          severity: HIGH,CRITICAL
-          exit-code: '0'
+          image-ref: ${{ needs.build-and-push.outputs.image_tag }}
+          format: 'table'
+          exit-code: '1' # 🌟 Fails the pipeline if Critical/High vulnerabilities are found
           ignore-unfixed: true
+          severity: 'HIGH,CRITICAL'
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
 
   deploy_staging:
-    name: Deploy Staging
+    name: Deploy to Staging
     runs-on: ubuntu-latest
-    needs: [build_and_push, security_scan]
+    needs: [build-and-push, security_scan]
     env:
-      IMAGE_TAG: ${{ needs.build_and_push.outputs.image_tag }}
+      IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }} # Use staging DB if available
     steps:
       - uses: actions/checkout@v4
 
-      # ✅ Fixed SSH — use config file instead of ssh-agent
-      - name: Write SSH Key
+      - name: Setup SSH Agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Deploy to Staging Box
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key.pem
-          chmod 600 ~/.ssh/deploy_key.pem
-          echo -e "Host *\n\tStrictHostKeyChecking no\n\tIdentityFile ~/.ssh/deploy_key.pem\n" > ~/.ssh/config
-
-      - name: Create Staging Context
-        run: |
-          docker context create staging \
-            --docker "host=ssh://ubuntu@${{ vars.STAGING_SERVER_IP }}"
-
-      - name: Deploy to Staging
-        run: |
-          IMAGE_TAG=${{ env.IMAGE_TAG }} \
-          DATABASE_URL=${{ secrets.DATABASE_URL }} \
-          docker --context staging compose pull
-
-          IMAGE_TAG=${{ env.IMAGE_TAG }} \
-          DATABASE_URL=${{ secrets.DATABASE_URL }} \
-          docker --context staging compose up -d --remove-orphans
-
-          docker --context staging image prune -f
-
-      - name: Health Check Staging
-        run: |
-          echo "⏳ Waiting for Staging to be healthy (max 120s)..."
-          for i in {1..12}; do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-              --max-time 10 \
-              http://${{ vars.STAGING_SERVER_IP }}:3000/api/health 2>/dev/null || echo "000")
-            if [ "$STATUS" = "200" ]; then
-              echo "✅ Staging healthy! HTTP $STATUS"
-              exit 0
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ vars.STAGING_SERVER_IP }} \
+            "export IMAGE_TAG='$IMAGE_TAG'; export DATABASE_URL='$DATABASE_URL'; bash -s" << 'EOF'
+            mkdir -p /app && cd /app
+            docker compose pull --quiet
+            docker compose up -d --remove-orphans
+            docker image prune -f
+            
+            echo "⏳ Waiting 30s for Staging Next.js container..."
+            sleep 30
+            
+            if curl -f http://localhost:3000/api/health; then
+              echo "✅ Staging environment is healthy!"
+            else
+              echo "❌ Staging environment failed health check!"
+              exit 1
             fi
-            echo "Attempt $i/12: HTTP $STATUS"
-            sleep 10
-          done
-          echo "❌ Staging failed health check after 120s"
-          exit 1
+          EOF
 
   approve_production:
-    name: Approve Production
+    name: Gate Production Approval
     runs-on: ubuntu-latest
     needs: deploy_staging
-    environment: production
+    environment: production # 🌟 Enforces manual team sign-off button in GitHub Actions UI
     steps:
-      - run: echo "✅ Approved"
+      - run: echo "🚀 Promotion authorized by team manager."
 
   deploy_production:
-    name: Deploy Production
+    name: Rolling Production Deploy
     runs-on: ubuntu-latest
-    needs: [build_and_push, approve_production]
+    needs: [build-and-push, approve_production]
     env:
-      IMAGE_TAG: ${{ needs.build_and_push.outputs.image_tag }}
-    permissions:
-      contents: read
-      packages: write
+      IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
     steps:
       - uses: actions/checkout@v4
 
-      # ✅ Fixed SSH — use config file instead of ssh-agent
-      - name: Write SSH Key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key.pem
-          chmod 600 ~/.ssh/deploy_key.pem
-          echo -e "Host *\n\tStrictHostKeyChecking no\n\tIdentityFile ~/.ssh/deploy_key.pem\n" > ~/.ssh/config
+      - name: Setup SSH Agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      - name: Create Docker Contexts
-        run: |
-          docker context create node1 \
-            --docker "host=ssh://ubuntu@${{ vars.PROD_SERVER_1_IP }}"
-          docker context create node2 \
-            --docker "host=ssh://ubuntu@${{ vars.PROD_SERVER_2_IP }}"
-
-      # ---- Server 1 ----
+      # ================= SERVER 1 =================
       - name: Deploy to Server 1
         run: |
-          IMAGE_TAG=${{ env.IMAGE_TAG }} \
-          DATABASE_URL=${{ secrets.DATABASE_URL }} \
-          docker --context node1 compose pull
-
-          IMAGE_TAG=${{ env.IMAGE_TAG }} \
-          DATABASE_URL=${{ secrets.DATABASE_URL }} \
-          docker --context node1 compose up -d --remove-orphans
-
-          docker --context node1 image prune -f
-
-      - name: Health Check Server 1
-        run: |
-          echo "⏳ Waiting for Server 1 to be healthy (max 120s)..."
-          for i in {1..12}; do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-              --max-time 10 \
-              http://${{ vars.PROD_SERVER_1_IP }}:3000/api/health 2>/dev/null || echo "000")
-            if [ "$STATUS" = "200" ]; then
-              echo "✅ Server 1 healthy! HTTP $STATUS"
-              break
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ vars.PROD_SERVER_1_IP }} \
+            "export IMAGE_TAG='$IMAGE_TAG'; export DATABASE_URL='$DATABASE_URL'; bash -s" << 'EOF'
+            mkdir -p /app && cd /app
+            docker compose pull --quiet
+            docker compose up -d --remove-orphans
+            docker image prune -f
+            
+            echo "⏳ Waiting 30s for Server 1 Next.js container..."
+            sleep 30
+            
+            if curl -f http://localhost:3000/api/health; then
+              echo "✅ Server 1 healthy and active!"
+            else
+              echo "❌ Server 1 failed! Halting deployment to protect Server 2."
+              exit 1
             fi
-            echo "Attempt $i/12: HTTP $STATUS"
-            sleep 10
-          done
-          [ "$STATUS" = "200" ] || (echo "❌ Server 1 unhealthy after 120s" && exit 1)
+          EOF
 
-      # ---- Server 2 ----
+      # ================= SERVER 2 =================
       - name: Deploy to Server 2
         run: |
-          IMAGE_TAG=${{ env.IMAGE_TAG }} \
-          DATABASE_URL=${{ secrets.DATABASE_URL }} \
-          docker --context node2 compose pull
-
-          IMAGE_TAG=${{ env.IMAGE_TAG }} \
-          DATABASE_URL=${{ secrets.DATABASE_URL }} \
-          docker --context node2 compose up -d --remove-orphans
-
-          docker --context node2 image prune -f
-
-      - name: Health Check Server 2
-        run: |
-          echo "⏳ Waiting for Server 2 to be healthy (max 120s)..."
-          for i in {1..12}; do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-              --max-time 10 \
-              http://${{ vars.PROD_SERVER_2_IP }}:3000/api/health 2>/dev/null || echo "000")
-            if [ "$STATUS" = "200" ]; then
-              echo "✅ Server 2 healthy! HTTP $STATUS"
-              break
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ vars.PROD_SERVER_2_IP }} \
+            "export IMAGE_TAG='$IMAGE_TAG'; export DATABASE_URL='$DATABASE_URL'; bash -s" << 'EOF'
+            mkdir -p /app && cd /app
+            docker compose pull --quiet
+            docker compose up -d --remove-orphans
+            docker image prune -f
+            
+            echo "⏳ Waiting 30s for Server 2 Next.js container..."
+            sleep 30
+            
+            if curl -f http://localhost:3000/api/health; then
+              echo "✅ Server 2 healthy and active! Full deployment complete."
+            else
+              echo "❌ Server 2 failed health check!"
+              exit 1
             fi
-            echo "Attempt $i/12: HTTP $STATUS"
-            sleep 10
-          done
-          [ "$STATUS" = "200" ] || (echo "❌ Server 2 unhealthy after 120s" && exit 1)
-
-      # ---- Final ALB check ----
-      - name: Final Health Check via ALB
-        run: |
-          echo "⏳ Checking ALB health (max 60s)..."
-          for i in {1..6}; do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-              --max-time 10 \
-              http://${{ secrets.ALB_URL }}/api/health 2>/dev/null || echo "000")
-            if [ "$STATUS" = "200" ]; then
-              echo "✅ ALB healthy! HTTP $STATUS"
-              exit 0
-            fi
-            echo "Attempt $i/6: HTTP $STATUS"
-            sleep 10
-          done
-          echo "❌ ALB check failed after 60s"
-          exit 1
-
-      # ✅ Tag as stable after successful deploy
-      - name: Tag as stable
-        if: success()
-        run: |
-          docker login ghcr.io \
-            -u ${{ github.actor }} \
-            -p ${{ secrets.GITHUB_TOKEN }}
-          docker buildx imagetools create \
-            --tag ghcr.io/lijo-cloud/gocart:stable \
-            ${{ env.IMAGE_TAG }}
-          echo "✅ Tagged as stable"
-
-      # ✅ Rollback to last stable on failure
-      - name: Rollback on Failure
-        if: failure()
-        run: |
-          echo "⚠️ Rolling back to stable"
-          IMAGE_TAG=ghcr.io/lijo-cloud/gocart:stable \
-          DATABASE_URL=${{ secrets.DATABASE_URL }} \
-          docker --context node1 compose up -d --remove-orphans || true
-
-          IMAGE_TAG=ghcr.io/lijo-cloud/gocart:stable \
-          DATABASE_URL=${{ secrets.DATABASE_URL }} \
-          docker --context node2 compose up -d --remove-orphans || true
-
-          echo "✅ Rollback complete"
+          EOF

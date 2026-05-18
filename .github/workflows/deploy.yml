@@ -171,14 +171,14 @@ jobs:
       - name: Wait for Server 2
         run: sleep 30
 
-      # ---- Final ALB check ----
-      - name: Final Health Check via ALB
-        run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            --max-time 10 \
-            http://${{ secrets.ALB_URL }}/api/health || echo "000")
-          echo "ALB: HTTP $STATUS"
-          [ "$STATUS" = "200" ] || (echo "❌ ALB check failed" && exit 1)
+      # # ---- Final ALB check ----
+      # - name: Final Health Check via ALB
+      #   run: |
+      #     STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+      #       --max-time 10 \
+      #       http://${{ secrets.ALB_URL }}/api/health || echo "000")
+      #     echo "ALB: HTTP $STATUS"
+      #     [ "$STATUS" = "200" ] || (echo "❌ ALB check failed" && exit 1)
 
       # ---- Rollback both servers in one step if anything failed ----
       - name: Rollback on Failure

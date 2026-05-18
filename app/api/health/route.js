@@ -1,3 +1,5 @@
 export async function GET() {
-  return Response.json({ status: "ok" }, { status: 200 });
+  return Response.json({ status: "ok",
+    hostname: process.env.HOSTNAME || "unknown"
+   }, { status: 200 });
 }

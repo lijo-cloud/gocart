@@ -49,69 +49,148 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  deploy:
-    name: Rolling Deploy
+  # ────────────────────────────────
+  # STAGING
+  # ────────────────────────────────
+  deploy_staging:
+    name: Deploy to Staging
     runs-on: ubuntu-latest
     needs: build_and_push
     env:
       IMAGE_TAG: ${{ needs.build_and_push.outputs.image_tag }}
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: Write SSH Key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key.pem
-          chmod 600 ~/.ssh/deploy_key.pem
-          echo -e "Host *\n\tStrictHostKeyChecking no\n\tIdentityFile ~/.ssh/deploy_key.pem\n" > ~/.ssh/config
+      # ✅ Copy compose file to staging server automatically
+      - name: Copy compose file to Staging
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.STAGING_SERVER_IP }}
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "docker-compose.yml"
+          target: "/app"
 
-      - name: Create Docker Contexts
+      - name: Deploy to Staging
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.STAGING_SERVER_IP }}
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /app
+            export IMAGE_TAG=${{ env.IMAGE_TAG }}
+            export DATABASE_URL=${{ secrets.DATABASE_URL }}
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io \
+              -u ${{ github.actor }} --password-stdin
+            docker compose pull
+            docker compose up -d --remove-orphans
+            docker image prune -f
+
+      # Staging health check hits server directly — port 3000
+      # Make sure staging SG allows port 3000 from anywhere
+      - name: Health Check Staging
         run: |
-          docker context create node1 \
-            --docker "host=ssh://ubuntu@${{ secrets.PROD_SERVER_1_IP }}"
-          docker context create node2 \
-            --docker "host=ssh://ubuntu@${{ secrets.PROD_SERVER_2_IP }}"
+          sleep 30
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            --max-time 10 \
+            http://${{ secrets.STAGING_SERVER_IP }}:3000/api/health || echo "000")
+          echo "Staging: HTTP $STATUS"
+          [ "$STATUS" = "200" ] || (echo "❌ Staging failed — production untouched" && exit 1)
+
+  # ────────────────────────────────
+  # MANUAL APPROVAL GATE
+  # ────────────────────────────────
+  approve_production:
+    name: Approve Production Deploy
+    runs-on: ubuntu-latest
+    needs: deploy_staging
+    environment: production   # ← triggers GitHub approval UI — you get email to approve
+    steps:
+      - run: echo "✅ Approved — proceeding to production"
+
+  # ────────────────────────────────
+  # PRODUCTION
+  # ────────────────────────────────
+  deploy_production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build_and_push, approve_production]
+    env:
+      IMAGE_TAG: ${{ needs.build_and_push.outputs.image_tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # ✅ Copy compose file to both prod servers automatically
+      - name: Copy compose file to Production Servers
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: "${{ secrets.PROD_SERVER_1_IP }},${{ secrets.PROD_SERVER_2_IP }}"
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "docker-compose.yml"
+          target: "/app"
 
       # ---- Server 1 ----
       - name: Deploy to Server 1
-        run: |
-          IMAGE_TAG=${{ env.IMAGE_TAG }} \
-          DATABASE_URL=${{ secrets.DATABASE_URL }} \
-          docker --context node1 compose pull
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PROD_SERVER_1_IP }}
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /app
+            export IMAGE_TAG=${{ env.IMAGE_TAG }}
+            export DATABASE_URL=${{ secrets.DATABASE_URL }}
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io \
+              -u ${{ github.actor }} --password-stdin
+            docker compose pull
+            docker compose up -d --remove-orphans
+            docker image prune -f
 
-          IMAGE_TAG=${{ env.IMAGE_TAG }} \
-          DATABASE_URL=${{ secrets.DATABASE_URL }} \
-          docker --context node1 compose up -d --remove-orphans
-
-          docker --context node1 image prune -f
-
-      # ✅ Wait for Server 1 container to boot, ALB will handle traffic shift
-      - name: Wait for Server 1 to boot
+      - name: Wait for Server 1
         run: sleep 30
 
       # ---- Server 2 ----
       - name: Deploy to Server 2
-        run: |
-          IMAGE_TAG=${{ env.IMAGE_TAG }} \
-          DATABASE_URL=${{ secrets.DATABASE_URL }} \
-          docker --context node2 compose pull
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PROD_SERVER_2_IP }}
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /app
+            export IMAGE_TAG=${{ env.IMAGE_TAG }}
+            export DATABASE_URL=${{ secrets.DATABASE_URL }}
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io \
+              -u ${{ github.actor }} --password-stdin
+            docker compose pull
+            docker compose up -d --remove-orphans
+            docker image prune -f
 
-          IMAGE_TAG=${{ env.IMAGE_TAG }} \
-          DATABASE_URL=${{ secrets.DATABASE_URL }} \
-          docker --context node2 compose up -d --remove-orphans
-
-          docker --context node2 image prune -f
-
-      - name: Wait for Server 2 to boot
+      - name: Wait for Server 2
         run: sleep 30
 
-      # ✅ Final check via ALB — confirms both servers are serving traffic
+      # ---- Final ALB check ----
       - name: Final Health Check via ALB
         run: |
-          # STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-          #   --max-time 10 \
-          #   http://${{ secrets.ALB_URL }}/api/health)
-          # echo "ALB responded with HTTP $STATUS"
-          # [ "$STATUS" = "200" ] || (echo "❌ ALB health check failed" && exit 1)
-          curl -v --max-time 10 http://${{ secrets.ALB_URL }}/api/health || true
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            --max-time 10 \
+            http://${{ secrets.ALB_URL }}/api/health || echo "000")
+          echo "ALB: HTTP $STATUS"
+          [ "$STATUS" = "200" ] || (echo "❌ ALB check failed" && exit 1)
+
+      # ---- Rollback both servers in one step if anything failed ----
+      - name: Rollback on Failure
+        if: failure()
+        uses: appleboy/ssh-action@v1
+        with:
+          host: "${{ secrets.PROD_SERVER_1_IP }},${{ secrets.PROD_SERVER_2_IP }}"
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /app
+            export IMAGE_TAG=ghcr.io/lijo-cloud/gocart:latest
+            export DATABASE_URL=${{ secrets.DATABASE_URL }}
+            docker compose up -d --remove-orphans
+            echo "⚠️ Rolled back to latest stable image"

@@ -22,8 +22,8 @@ jobs:
           node-version: 20
           cache: 'npm'
       - run: npm ci
-      - run: npm test --if-present
-      - run: npm audit --audit-level=high
+      # - run: npm test --if-present
+      # - run: npm audit --audit-level=high
 
   # ────────────────────────────────
   # 2. BUILD

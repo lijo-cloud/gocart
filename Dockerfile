@@ -19,9 +19,9 @@ ENV HOSTNAME="0.0.0.0"
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# Copy standalone app and static files
+# Copy standalone app (includes .next/static internally)
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# Copy public folder for static assets
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
 # ✅ Extended health check for Docker and ALB - increased start period to 60s

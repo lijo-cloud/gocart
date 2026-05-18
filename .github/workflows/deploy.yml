@@ -141,6 +141,9 @@ jobs:
     needs: [build_and_push, approve_production]
     env:
       IMAGE_TAG: ${{ needs.build_and_push.outputs.image_tag }}
+    permissions:
+      contents: read
+      packages: write     
     steps:
       - uses: actions/checkout@v4
 

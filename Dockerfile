@@ -33,4 +33,7 @@ USER nextjs
 EXPOSE 3000
 
 # Run the standalone Next.js server
-CMD ["node", "server.js"]
+# CMD ["node", "server.js"]
+
+# 🚀 NEW ENTRYPOINT: Syncs new chunks into the volume without erasing old ones
+CMD ["sh", "-c", "mkdir -p /app/static_cache && cp -r /app/.next/static/. /app/static_cache/ && ln -sfn /app/static_cache /app/.next/static && node server.js"]

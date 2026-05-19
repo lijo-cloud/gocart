@@ -179,8 +179,8 @@ jobs:
           EOF
 
       # ================= TRAFFIC SHIFT GAP =================
-      - name: Wait for AWS ALB to shift active user traffic
-        run: sleep 45
+      - name: Wait for AWS ALB to fully register Server 1
+        run: sleep 60
 
       # ================= SERVER 2 =================
       - name: Deploy & Validate Server 2

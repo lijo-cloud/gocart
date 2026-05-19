@@ -91,18 +91,25 @@ jobs:
       - name: Deploy & Verify Staging
         run: |
           ssh -o StrictHostKeyChecking=no ubuntu@${{ vars.STAGING_SERVER_IP }} \
-            "export IMAGE_TAG='$IMAGE_TAG'; export DATABASE_URL='$DATABASE_URL'; bash -s" << 'EOF'
+            "export IMAGE_TAG='$IMAGE_TAG'; export DATABASE_URL='$DATABASE_URL'; export DOCKER_IMAGE='${{ env.DOCKER_IMAGE }}'; bash -s" << 'EOF'
             mkdir -p /app && cd /app
             
-            echo "📥 Pulling new image on Staging..."
+            echo "📥 Pulling image on Staging..."
             docker compose pull --quiet
             
-            echo "🚀 Performing Zero-Downtime Rolling Update..."
-            if docker compose up -d --remove-orphans --wait; then
+            echo "🚀 Updating Staging container..."
+            docker compose up -d --remove-orphans
+            
+            echo "⏳ Verifying container health..."
+            sleep 15
+            
+            if curl -f http://localhost:3000/api/health >/dev/null 2>&1; then
               echo "✅ Staging environment is healthy!"
               docker image prune -f
             else
-              echo "❌ Staging failed health check! Docker rolling back."
+              echo "🚨 Staging failed health check! Executing automated rollback..."
+              export IMAGE_TAG="$DOCKER_IMAGE:latest"
+              docker compose up -d --remove-orphans
               exit 1
             fi
           EOF
@@ -134,38 +141,56 @@ jobs:
       - name: Deploy & Validate Server 1
         run: |
           ssh -o StrictHostKeyChecking=no ubuntu@${{ vars.PROD_SERVER_1_IP }} \
-            "export IMAGE_TAG='$IMAGE_TAG'; export DATABASE_URL='$DATABASE_URL'; bash -s" << 'EOF'
+            "export IMAGE_TAG='$IMAGE_TAG'; export DATABASE_URL='$DATABASE_URL'; export DOCKER_IMAGE='${{ env.DOCKER_IMAGE }}'; bash -s" << 'EOF'
             mkdir -p /app && cd /app
             
-            echo "📥 Pulling new image on Server 1..."
+            echo "📥 Pulling image on Server 1..."
             docker compose pull --quiet
             
-            echo "🚀 Performing Zero-Downtime Rolling Update on Server 1..."
-            if docker compose up -d --remove-orphans --wait; then
-              echo "✅ Server 1 successfully running new deployment."
+            echo "🚀 Updating Server 1 container..."
+            docker compose up -d --remove-orphans
+            
+            echo "⏳ Verifying Server 1 health..."
+            sleep 15
+            
+            if curl -f http://localhost:3000/api/health >/dev/null 2>&1; then
+              echo "✅ Server 1 successfully updated."
               docker image prune -f
             else
-              echo "🚨 Server 1 FAILED health checks! Docker rolling back."
+              echo "🚨 Server 1 FAILED health checks! Executing automated rollback..."
+              export IMAGE_TAG="$DOCKER_IMAGE:latest"
+              docker compose up -d --remove-orphans
               exit 1
             fi
           EOF
+
+      # ================= TRAFFIC SHIFT GAP =================
+      - name: Wait for AWS ALB to shift active user traffic
+        run: sleep 30
 
       # ================= SERVER 2 =================
       - name: Deploy & Validate Server 2
         run: |
           ssh -o StrictHostKeyChecking=no ubuntu@${{ vars.PROD_SERVER_2_IP }} \
-            "export IMAGE_TAG='$IMAGE_TAG'; export DATABASE_URL='$DATABASE_URL'; bash -s" << 'EOF'
+            "export IMAGE_TAG='$IMAGE_TAG'; export DATABASE_URL='$DATABASE_URL'; export DOCKER_IMAGE='${{ env.DOCKER_IMAGE }}'; bash -s" << 'EOF'
             mkdir -p /app && cd /app
             
-            echo "📥 Pulling new image on Server 2..."
+            echo "📥 Pulling image on Server 2..."
             docker compose pull --quiet
             
-            echo "🚀 Performing Zero-Downtime Rolling Update on Server 2..."
-            if docker compose up -d --remove-orphans --wait; then
-              echo "✅ Server 2 successfully running new deployment."
+            echo "🚀 Updating Server 2 container..."
+            docker compose up -d --remove-orphans
+            
+            echo "⏳ Verifying Server 2 health..."
+            sleep 15
+            
+            if curl -f http://localhost:3000/api/health >/dev/null 2>&1; then
+              echo "✅ Server 2 successfully updated."
               docker image prune -f
             else
-              echo "🚨 Server 2 FAILED health checks! Docker rolling back."
+              echo "🚨 Server 2 FAILED health checks! Executing automated rollback..."
+              export IMAGE_TAG="$DOCKER_IMAGE:latest"
+              docker compose up -d --remove-orphans
               exit 1
             fi
           EOF

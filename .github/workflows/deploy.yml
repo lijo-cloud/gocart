@@ -94,6 +94,12 @@ jobs:
             "export IMAGE_TAG='$IMAGE_TAG'; export DATABASE_URL='$DATABASE_URL'; export DOCKER_IMAGE='${{ env.DOCKER_IMAGE }}'; bash -s" << 'EOF'
             mkdir -p /app && cd /app
             
+            # 🚀 FIX: Cache the currently running image as "stable" before pulling anything new
+            CURRENT_IMAGE=$(docker compose images -q app)
+            if [ ! -z "$CURRENT_IMAGE" ]; then
+              docker tag $CURRENT_IMAGE $DOCKER_IMAGE:stable
+            fi
+
             echo "📥 Pulling image on Staging..."
             docker compose pull --quiet
             
@@ -108,7 +114,8 @@ jobs:
               docker image prune -f
             else
               echo "🚨 Staging failed health check! Executing automated rollback..."
-              export IMAGE_TAG="$DOCKER_IMAGE:latest"
+              # 🚀 FIX: Revert specifically to the :stable marker image tag
+              export IMAGE_TAG="$DOCKER_IMAGE:stable"
               docker compose up -d --remove-orphans
               exit 1
             fi
@@ -144,6 +151,12 @@ jobs:
             "export IMAGE_TAG='$IMAGE_TAG'; export DATABASE_URL='$DATABASE_URL'; export DOCKER_IMAGE='${{ env.DOCKER_IMAGE }}'; bash -s" << 'EOF'
             mkdir -p /app && cd /app
             
+            # 🚀 FIX: Cache the current image as stable first
+            CURRENT_IMAGE=$(docker compose images -q app)
+            if [ ! -z "$CURRENT_IMAGE" ]; then
+              docker tag $CURRENT_IMAGE $DOCKER_IMAGE:stable
+            fi
+
             echo "📥 Pulling image on Server 1..."
             docker compose pull --quiet
             
@@ -158,7 +171,8 @@ jobs:
               docker image prune -f
             else
               echo "🚨 Server 1 FAILED health checks! Executing automated rollback..."
-              export IMAGE_TAG="$DOCKER_IMAGE:latest"
+              # 🚀 FIX: Target the guaranteed rollback image tag
+              export IMAGE_TAG="$DOCKER_IMAGE:stable"
               docker compose up -d --remove-orphans
               exit 1
             fi
@@ -175,6 +189,12 @@ jobs:
             "export IMAGE_TAG='$IMAGE_TAG'; export DATABASE_URL='$DATABASE_URL'; export DOCKER_IMAGE='${{ env.DOCKER_IMAGE }}'; bash -s" << 'EOF'
             mkdir -p /app && cd /app
             
+            # 🚀 FIX: Cache the current image as stable first
+            CURRENT_IMAGE=$(docker compose images -q app)
+            if [ ! -z "$CURRENT_IMAGE" ]; then
+              docker tag $CURRENT_IMAGE $DOCKER_IMAGE:stable
+            fi
+
             echo "📥 Pulling image on Server 2..."
             docker compose pull --quiet
             
@@ -189,7 +209,8 @@ jobs:
               docker image prune -f
             else
               echo "🚨 Server 2 FAILED health checks! Executing automated rollback..."
-              export IMAGE_TAG="$DOCKER_IMAGE:latest"
+              # 🚀 FIX: Target the guaranteed rollback image tag
+              export IMAGE_TAG="$DOCKER_IMAGE:stable"
               docker compose up -d --remove-orphans
               exit 1
             fi

@@ -19,11 +19,19 @@ ENV HOSTNAME="0.0.0.0"
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# Copy standalone app and ensure .next/static is available
+# 🚀 FIX: Pre-create cache and build paths with correct nextjs permissions
+RUN mkdir -p /app/static_cache /app/.next && chown -R nextjs:nodejs /app
+
+# Copy application assets
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-# Copy public folder for static assets
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static /app/.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+
+# # Copy standalone app and ensure .next/static is available
+# COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+# COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# # Copy public folder for static assets
+# COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
 # ✅ Extended health check for Docker and ALB - increased start period to 60s
 HEALTHCHECK --interval=10s --timeout=5s --start-period=60s --retries=5 \
@@ -35,5 +43,5 @@ EXPOSE 3000
 # Run the standalone Next.js server
 # CMD ["node", "server.js"]
 
-# 🚀 NEW ENTRYPOINT: Syncs new chunks into the volume without erasing old ones
-CMD ["sh", "-c", "mkdir -p /app/static_cache && cp -r /app/.next/static/. /app/static_cache/ && ln -sfn /app/static_cache /app/.next/static && node server.js"]
+# 🚀 FIX: Copy assets to the mounted cache volume, then start Next.js
+CMD ["sh", "-c", "cp -r /app/.next/static/. /app/static_cache/ 2>/dev/null || true; node server.js"]

@@ -5,8 +5,9 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      # Mount to a temporary path inside the container to avoid immediate overwriting
+      # 🚀 FIX: Map the shared host volume directly to the Next.js static asset folder
       - next_static:/app/static_cache
+      - next_static:/app/.next/static
     environment:
       NODE_ENV: production
       PORT: "3000"

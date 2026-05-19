@@ -179,8 +179,22 @@ jobs:
           EOF
 
       # ================= TRAFFIC SHIFT GAP =================
-      - name: Wait for AWS ALB to fully register Server 1
-        run: sleep 60
+      # - name: Wait for AWS ALB to fully register Server 1
+      #   run: sleep 60
+
+      - name: Poll ALB until Server 1 is healthy
+        run: |
+          set -e
+          ALB_ENDPOINT="${{ vars.ALB_ENDPOINT }}"
+          for i in $(seq 1 30); do
+            if curl -sf "http://$ALB_ENDPOINT/api/health" > /dev/null 2>&1; then
+              echo "✅ Server 1 healthy (attempt $i)"
+              sleep 30
+              exit 0
+            fi
+            [ $i -lt 30 ] && sleep 5
+          done
+          exit 1
 
       # ================= SERVER 2 =================
       - name: Deploy & Validate Server 2

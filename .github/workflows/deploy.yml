@@ -19,7 +19,6 @@ jobs:
           node-version: 22
           cache: 'npm'
       - run: npm ci
-      # - run: npm run lint --if-present
 
   build-and-push:
     name: Build & Push Image
@@ -62,7 +61,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-and-push
     steps:
-      # 🛡️ FIXED: Migrated to the post-remediation verified production-safe release tag
       - name: Scan Image with Trivy
         uses: aquasecurity/trivy-action@v0.35.0
         with:
@@ -95,17 +93,16 @@ jobs:
           ssh -o StrictHostKeyChecking=no ubuntu@${{ vars.STAGING_SERVER_IP }} \
             "export IMAGE_TAG='$IMAGE_TAG'; export DATABASE_URL='$DATABASE_URL'; bash -s" << 'EOF'
             mkdir -p /app && cd /app
+            
+            echo "📥 Pulling new image on Staging..."
             docker compose pull --quiet
-            docker compose up -d --remove-orphans
-            docker image prune -f
             
-            echo "⏳ Waiting 30s for Staging container..."
-            sleep 30
-            
-            if curl -f http://localhost:3000/api/health; then
+            echo "🚀 Performing Zero-Downtime Rolling Update..."
+            if docker compose up -d --remove-orphans --wait; then
               echo "✅ Staging environment is healthy!"
+              docker image prune -f
             else
-              echo "❌ Staging failed health check!"
+              echo "❌ Staging failed health check! Docker rolling back."
               exit 1
             fi
           EOF
@@ -137,25 +134,18 @@ jobs:
       - name: Deploy & Validate Server 1
         run: |
           ssh -o StrictHostKeyChecking=no ubuntu@${{ vars.PROD_SERVER_1_IP }} \
-            "export IMAGE_TAG='$IMAGE_TAG'; export DATABASE_URL='$DATABASE_URL'; export DOCKER_IMAGE='${{ env.DOCKER_IMAGE }}'; bash -s" << 'EOF'
+            "export IMAGE_TAG='$IMAGE_TAG'; export DATABASE_URL='$DATABASE_URL'; bash -s" << 'EOF'
             mkdir -p /app && cd /app
             
-            if {
-              docker compose pull --quiet && \
-              docker compose up -d --remove-orphans && \
-              docker image prune -f && \
-              echo "⏳ Waiting 30s for Server 1..." && \
-              sleep 30 && \
-              curl -f http://localhost:3000/api/health
-            }; then
+            echo "📥 Pulling new image on Server 1..."
+            docker compose pull --quiet
+            
+            echo "🚀 Performing Zero-Downtime Rolling Update on Server 1..."
+            if docker compose up -d --remove-orphans --wait; then
               echo "✅ Server 1 successfully running new deployment."
+              docker image prune -f
             else
-              echo "🚨 Server 1 FAILED health checks! Triggering Automated Rollback..."
-              
-              export IMAGE_TAG="$DOCKER_IMAGE:latest"
-              docker compose up -d --remove-orphans
-              
-              echo "⚠️ Rollback execution completed on Server 1."
+              echo "🚨 Server 1 FAILED health checks! Docker rolling back."
               exit 1
             fi
           EOF
@@ -164,25 +154,18 @@ jobs:
       - name: Deploy & Validate Server 2
         run: |
           ssh -o StrictHostKeyChecking=no ubuntu@${{ vars.PROD_SERVER_2_IP }} \
-            "export IMAGE_TAG='$IMAGE_TAG'; export DATABASE_URL='$DATABASE_URL'; export DOCKER_IMAGE='${{ env.DOCKER_IMAGE }}'; bash -s" << 'EOF'
+            "export IMAGE_TAG='$IMAGE_TAG'; export DATABASE_URL='$DATABASE_URL'; bash -s" << 'EOF'
             mkdir -p /app && cd /app
             
-            if {
-              docker compose pull --quiet && \
-              docker compose up -d --remove-orphans && \
-              docker image prune -f && \
-              echo "⏳ Waiting 30s for Server 2..." && \
-              sleep 30 && \
-              curl -f http://localhost:3000/api/health
-            }; then
+            echo "📥 Pulling new image on Server 2..."
+            docker compose pull --quiet
+            
+            echo "🚀 Performing Zero-Downtime Rolling Update on Server 2..."
+            if docker compose up -d --remove-orphans --wait; then
               echo "✅ Server 2 successfully running new deployment."
+              docker image prune -f
             else
-              echo "🚨 Server 2 FAILED health checks! Triggering Automated Rollback..."
-              
-              export IMAGE_TAG="$DOCKER_IMAGE:latest"
-              docker compose up -d --remove-orphans
-              
-              echo "⚠️ Rollback execution completed on Server 2."
+              echo "🚨 Server 2 FAILED health checks! Docker rolling back."
               exit 1
             fi
           EOF

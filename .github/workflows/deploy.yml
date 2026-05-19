@@ -180,7 +180,7 @@ jobs:
 
       # ================= TRAFFIC SHIFT GAP =================
       - name: Wait for AWS ALB to shift active user traffic
-        run: sleep 30
+        run: sleep 45
 
       # ================= SERVER 2 =================
       - name: Deploy & Validate Server 2

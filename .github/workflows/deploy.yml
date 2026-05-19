@@ -104,10 +104,19 @@ jobs:
             docker compose pull --quiet
             
             echo "🚀 Updating Staging container..."
-            docker compose up -d --remove-orphans
+            # docker compose up -d --remove-orphans
+            docker compose up -d --no-deps app
             
             echo "⏳ Verifying container health..."
-            sleep 15
+            # sleep 15
+            
+            for i in $(seq 1 30); do
+              if curl -f http://localhost:3000/api/health >/dev/null 2>&1; then
+                echo "Healthy"
+                break
+              fi
+              sleep 5
+            done
             
             if curl -f http://localhost:3000/api/health >/dev/null 2>&1; then
               echo "✅ Staging environment is healthy!"
@@ -116,7 +125,8 @@ jobs:
               echo "🚨 Staging failed health check! Executing automated rollback..."
               # 🚀 FIX: Revert specifically to the :stable marker image tag
               export IMAGE_TAG="$DOCKER_IMAGE:stable"
-              docker compose up -d --remove-orphans
+              # docker compose up -d --remove-orphans
+              docker compose up -d --no-deps app
               exit 1
             fi
           EOF
@@ -161,10 +171,19 @@ jobs:
             docker compose pull --quiet
             
             echo "🚀 Updating Server 1 container..."
-            docker compose up -d --remove-orphans
+            # docker compose up -d --remove-orphans
+            docker compose up -d --no-deps app
             
             echo "⏳ Verifying Server 1 health..."
-            sleep 15
+            # sleep 15
+
+              for i in $(seq 1 30); do
+              if curl -f http://localhost:3000/api/health >/dev/null 2>&1; then
+                echo "Healthy"
+                break
+              fi
+              sleep 5
+            done
             
             if curl -f http://localhost:3000/api/health >/dev/null 2>&1; then
               echo "✅ Server 1 successfully updated."
@@ -173,7 +192,8 @@ jobs:
               echo "🚨 Server 1 FAILED health checks! Executing automated rollback..."
               # 🚀 FIX: Target the guaranteed rollback image tag
               export IMAGE_TAG="$DOCKER_IMAGE:stable"
-              docker compose up -d --remove-orphans
+              # docker compose up -d --remove-orphans
+              docker compose up -d --no-deps app
               exit 1
             fi
           EOF
@@ -213,10 +233,19 @@ jobs:
             docker compose pull --quiet
             
             echo "🚀 Updating Server 2 container..."
-            docker compose up -d --remove-orphans
+            # docker compose up -d --remove-orphans
+            docker compose up -d --no-deps app
             
             echo "⏳ Verifying Server 2 health..."
-            sleep 15
+            # sleep 15
+
+              for i in $(seq 1 30); do
+              if curl -f http://localhost:3000/api/health >/dev/null 2>&1; then
+                echo "Healthy"
+                break
+              fi
+              sleep 5
+            done
             
             if curl -f http://localhost:3000/api/health >/dev/null 2>&1; then
               echo "✅ Server 2 successfully updated."
@@ -225,7 +254,9 @@ jobs:
               echo "🚨 Server 2 FAILED health checks! Executing automated rollback..."
               # 🚀 FIX: Target the guaranteed rollback image tag
               export IMAGE_TAG="$DOCKER_IMAGE:stable"
-              docker compose up -d --remove-orphans
+
+              # docker compose up -d --remove-orphans
+              docker compose up -d --no-deps app
               exit 1
             fi
           EOF

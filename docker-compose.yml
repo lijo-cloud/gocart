@@ -4,10 +4,6 @@ services:
     restart: unless-stopped
     ports:
       - "3000:3000"
-    volumes:
-      # 🚀 FIX: Map the shared host volume directly to the Next.js static asset folder
-      - next_static:/app/static_cache
-      - next_static:/app/.next/static
     environment:
       NODE_ENV: production
       PORT: "3000"
@@ -24,5 +20,3 @@ services:
       options:
         max-size: "20m"
         max-file: "5"
-volumes: 
-  next_static:

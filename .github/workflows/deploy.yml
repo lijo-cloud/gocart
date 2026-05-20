@@ -111,7 +111,7 @@ jobs:
             fi
 
             echo "🧹 Cleaning old Docker images..."
-            docker system prune -af || true
+            docker image prune -af || true
 
             echo "📥 Pulling image on Staging..."
             docker compose pull --quiet || exit 1
@@ -207,7 +207,7 @@ jobs:
             fi
 
             echo "🧹 Cleaning old Docker images..."
-            docker system prune -af || true
+            docker image prune -af || true
 
             echo "📥 Pulling image on Staging..."
             docker compose pull --quiet || exit 1
@@ -245,11 +245,11 @@ jobs:
             fi
           EOF
 
-      - name: Register Server 1 back to ALB
-        run: |
-          aws elbv2 register-targets \
-            --target-group-arn ${{ vars.TARGET_GROUP_ARN }} \
-            --targets Id=${{ vars.PROD_SERVER_1_INSTANCE_ID }}
+      # - name: Register Server 1 back to ALB
+      #   run: |
+      #     aws elbv2 register-targets \
+      #       --target-group-arn ${{ vars.TARGET_GROUP_ARN }} \
+      #       --targets Id=${{ vars.PROD_SERVER_1_INSTANCE_ID }}
             
       - name: Re-register Server 1 after deploy or rollback
         if: always()
@@ -305,7 +305,7 @@ jobs:
             fi
 
            echo "🧹 Cleaning old Docker images..."
-           docker system prune -af || true
+           docker image prune -af || true
 
            echo "📥 Pulling image on Staging..."
            docker compose pull --quiet || exit 1
@@ -343,11 +343,11 @@ jobs:
             fi
           EOF
 
-      - name: Register Server 2 back to ALB
-        run: |
-          aws elbv2 register-targets \
-            --target-group-arn ${{ vars.TARGET_GROUP_ARN }} \
-            --targets Id=${{ vars.PROD_SERVER_2_INSTANCE_ID }}
+      # - name: Register Server 2 back to ALB
+      #   run: |
+      #     aws elbv2 register-targets \
+      #       --target-group-arn ${{ vars.TARGET_GROUP_ARN }} \
+      #       --targets Id=${{ vars.PROD_SERVER_2_INSTANCE_ID }}
 
       - name: Re-register Server 2 after deploy or rollback
         if: always()

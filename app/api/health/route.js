@@ -1,6 +1,6 @@
 export async function GET() {
   return Response.json(
-  { status: "ok",
+  { status: "failed",
     hostname: process.env.HOSTNAME || "unknown"
-  }, { status: 200 });
+  }, { status: 500 });
 }

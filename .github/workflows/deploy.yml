@@ -110,8 +110,11 @@ jobs:
               docker tag $CURRENT_IMAGE $DOCKER_IMAGE:stable
             fi
 
+            echo "🧹 Cleaning old Docker images..."
+            docker system prune -af || true
+
             echo "📥 Pulling image on Staging..."
-            docker compose pull --quiet
+            docker compose pull --quiet || exit 1
 
             echo "🚀 Updating Staging container..."
             timeout 120 docker compose up -d --force-recreate --wait --no-deps app
@@ -203,8 +206,11 @@ jobs:
               docker tag $CURRENT_IMAGE $DOCKER_IMAGE:stable
             fi
 
-            echo "📥 Pulling image on Server 1..."
-            docker compose pull --quiet
+            echo "🧹 Cleaning old Docker images..."
+            docker system prune -af || true
+
+            echo "📥 Pulling image on Staging..."
+            docker compose pull --quiet || exit 1
 
             echo "🚀 Updating Server 1 container..."
             timeout 120 docker compose up -d --force-recreate --wait --no-deps app
@@ -298,8 +304,11 @@ jobs:
               docker tag $CURRENT_IMAGE $DOCKER_IMAGE:stable
             fi
 
-            echo "📥 Pulling image on Server 2..."
-            docker compose pull --quiet
+           echo "🧹 Cleaning old Docker images..."
+           docker system prune -af || true
+
+           echo "📥 Pulling image on Staging..."
+           docker compose pull --quiet || exit 1
 
             echo "🚀 Updating Server 2 container..."
             timeout 120 docker compose up -d --force-recreate --wait --no-deps app

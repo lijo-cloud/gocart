@@ -244,7 +244,14 @@ jobs:
           aws elbv2 register-targets \
             --target-group-arn ${{ vars.TARGET_GROUP_ARN }} \
             --targets Id=${{ vars.PROD_SERVER_1_INSTANCE_ID }}
-
+            
+      - name: Re-register Server 1 after deploy or rollback
+        if: always()
+        run: |
+          aws elbv2 register-targets \
+            --target-group-arn ${{ vars.TARGET_GROUP_ARN }} \
+            --targets Id=${{ vars.PROD_SERVER_1_INSTANCE_ID }}
+            
       - name: Wait for Server 1 healthy in ALB
         run: |
           for i in $(seq 1 30); do
@@ -328,6 +335,13 @@ jobs:
           EOF
 
       - name: Register Server 2 back to ALB
+        run: |
+          aws elbv2 register-targets \
+            --target-group-arn ${{ vars.TARGET_GROUP_ARN }} \
+            --targets Id=${{ vars.PROD_SERVER_2_INSTANCE_ID }}
+
+      - name: Re-register Server 2 after deploy or rollback
+        if: always()
         run: |
           aws elbv2 register-targets \
             --target-group-arn ${{ vars.TARGET_GROUP_ARN }} \

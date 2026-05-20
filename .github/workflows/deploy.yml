@@ -105,7 +105,7 @@ jobs:
             
             echo "🚀 Updating Staging container..."
             # docker compose up -d --remove-orphans
-            docker compose up -d --wait --no-deps app
+            docker compose up -d --force-recreate --wait --no-deps app
             
             echo "⏳ Verifying container health..."
             # sleep 15
@@ -126,7 +126,10 @@ jobs:
               # 🚀 FIX: Revert specifically to the :stable marker image tag
               export IMAGE_TAG="$DOCKER_IMAGE:stable"
               # docker compose up -d --remove-orphans
-              docker compose up -d --wait --no-deps app
+              docker compose up -d --force-recreate --wait --no-deps app
+
+              docker ps
+              docker compose images
               exit 1
             fi
           EOF
@@ -172,7 +175,10 @@ jobs:
             
             echo "🚀 Updating Server 1 container..."
             # docker compose up -d --remove-orphans
-            docker compose up -d --wait --no-deps app
+            docker compose up -d --force-recreate --wait --no-deps app
+
+            docker ps
+            docker compose images
             
             echo "⏳ Verifying Server 1 health..."
             # sleep 15
@@ -193,7 +199,9 @@ jobs:
               # 🚀 FIX: Target the guaranteed rollback image tag
               export IMAGE_TAG="$DOCKER_IMAGE:stable"
               # docker compose up -d --remove-orphans
-              docker compose up -d --wait --no-deps app
+              docker compose up -d --force-recreate --wait --no-deps app
+              docker ps
+              docker compose images
               exit 1
             fi
           EOF
@@ -234,7 +242,10 @@ jobs:
             
             echo "🚀 Updating Server 2 container..."
             # docker compose up -d --remove-orphans
-            docker compose up -d --wait--no-deps app
+            docker compose up -d --force-recreate --wait --no-deps app
+
+            docker ps
+            docker compose images
             
             echo "⏳ Verifying Server 2 health..."
             # sleep 15
@@ -256,7 +267,9 @@ jobs:
               export IMAGE_TAG="$DOCKER_IMAGE:stable"
 
               # docker compose up -d --remove-orphans
-              docker compose up -d --wait --no-deps app
+              docker compose up -d --force-recreate --wait --no-deps app
+              docker ps
+              docker compose images
               exit 1
             fi
           EOF

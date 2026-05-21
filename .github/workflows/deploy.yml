@@ -111,7 +111,7 @@ jobs:
             fi
 
             echo "🧹 Cleaning old Docker images..."
-            docker image prune -af || true
+            docker image prune -f || true
 
             echo "📥 Pulling image on Staging..."
             docker compose pull --quiet || exit 1
@@ -139,6 +139,8 @@ jobs:
               echo "🚨 Staging failed health check!"
 
               export IMAGE_TAG="$DOCKER_IMAGE:stable"
+              
+              docker compose pull --quiet   # ← add this line
 
               timeout 120 docker compose up -d --force-recreate --wait --no-deps app
 
@@ -207,7 +209,7 @@ jobs:
             fi
 
             echo "🧹 Cleaning old Docker images..."
-            docker image prune -af || true
+            docker image prune -f || true
 
             echo "📥 Pulling image on Staging..."
             docker compose pull --quiet || exit 1
@@ -235,6 +237,8 @@ jobs:
               echo "🚨 Server 1 FAILED health checks!"
 
               export IMAGE_TAG="$DOCKER_IMAGE:stable"
+
+              docker compose pull --quiet   # ← add this line
 
               timeout 120 docker compose up -d --force-recreate --wait --no-deps app
 
@@ -305,7 +309,7 @@ jobs:
             fi
 
            echo "🧹 Cleaning old Docker images..."
-           docker image prune -af || true
+           docker image prune -f || true
 
            echo "📥 Pulling image on Staging..."
            docker compose pull --quiet || exit 1
@@ -334,6 +338,8 @@ jobs:
 
               export IMAGE_TAG="$DOCKER_IMAGE:stable"
 
+              docker compose pull --quiet   # ← add this line
+              
               timeout 120 docker compose up -d --force-recreate --wait --no-deps app
 
               docker ps

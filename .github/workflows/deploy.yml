@@ -204,9 +204,8 @@ jobs:
           mkdir -p /app
           cd /app
 
-          cat > .env <<EOL
-          DATABASE_URL=${{ secrets.DATABASE_URL }}
-          EOL
+          echo "${{ secrets.DATABASE_URL }}" > .env
+          echo "IMAGE_TAG=${IMAGE_TAG}" >> .env
 
           chmod 600 .env
 
@@ -230,7 +229,16 @@ jobs:
                 retries: 5
           EOL
 
-          docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
+          apt-get install -y awscli
+
+          GHCR_PAT=$(aws ssm get-parameter \
+            --name "/github/ghcr/token" \
+            --with-decryption \
+            --query "Parameter.Value" \
+            --output text \
+            --region ap-south-1)
+
+          echo "$GHCR_PAT" | docker login ghcr.io -u lijo-cloud --password-stdin
 
           docker compose pull
           docker compose up -d

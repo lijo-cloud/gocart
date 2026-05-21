@@ -190,13 +190,13 @@ jobs:
       - name: Create New Launch Template Version
         run: |
 
-          cat > userdata.sh <<EOF
+          cat > userdata.sh <<'SCRIPT'
           #!/bin/bash
 
           exec > /var/log/user-data.log 2>&1
 
           apt-get update -y
-          apt-get install -y docker.io curl
+          apt-get install -y docker.io docker-compose-v2 curl awscli
 
           systemctl enable docker
           systemctl start docker
@@ -204,15 +204,16 @@ jobs:
           mkdir -p /app
           cd /app
 
-          echo "${{ secrets.DATABASE_URL }}" > .env
-          echo "IMAGE_TAG=${IMAGE_TAG}" >> .env
+          cat > .env <<EOF
+          DATABASE_URL=${{ secrets.DATABASE_URL }}
+          EOF
 
           chmod 600 .env
 
-          cat > docker-compose.yml <<EOL
+          cat > docker-compose.yml <<EOF
           services:
             app:
-              image: ${IMAGE_TAG}
+              image: ${{ env.IMAGE_TAG }}
 
               restart: always
 
@@ -227,22 +228,28 @@ jobs:
                 interval: 30s
                 timeout: 5s
                 retries: 5
-          EOL
+          EOF
 
-          apt-get install -y awscli
-
-          GHCR_PAT=$(aws ssm get-parameter \
+          TOKEN=$(aws ssm get-parameter \
             --name "/github/ghcr/token" \
             --with-decryption \
             --query "Parameter.Value" \
             --output text \
-            --region ap-south-1)
+            --region ${{ vars.AWS_REGION }})
 
-          echo "$GHCR_PAT" | docker login ghcr.io -u lijo-cloud --password-stdin
+          docker login ghcr.io \
+            -u ${{ github.actor }} \
+            -p $TOKEN
 
           docker compose pull
           docker compose up -d
-          EOF
+
+          sleep 20
+
+          docker ps
+          curl http://localhost:3000/api/health || true
+
+          SCRIPT
 
           ENCODED=$(base64 -w 0 userdata.sh)
 
@@ -250,25 +257,3 @@ jobs:
             --launch-template-id ${{ vars.LAUNCH_TEMPLATE_ID }} \
             --source-version ${{ steps.lt.outputs.version }} \
             --launch-template-data "{\"UserData\":\"$ENCODED\"}"
-
-      - name: Set Latest Launch Template Version Default
-        run: |
-
-          VERSION=$(aws ec2 describe-launch-template-versions \
-            --launch-template-id ${{ vars.LAUNCH_TEMPLATE_ID }} \
-            --versions '$Latest' \
-            --query 'LaunchTemplateVersions[0].VersionNumber' \
-            --output text)
-
-          aws ec2 modify-launch-template \
-            --launch-template-id ${{ vars.LAUNCH_TEMPLATE_ID }} \
-            --default-version $VERSION
-
-      - name: Start ASG Instance Refresh
-        run: |
-          aws autoscaling start-instance-refresh \
-            --auto-scaling-group-name ${{ vars.ASG_NAME }} \
-            --preferences '{
-              "MinHealthyPercentage": 50,
-              "InstanceWarmup": 120
-            }'

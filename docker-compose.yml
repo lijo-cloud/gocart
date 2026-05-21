@@ -4,7 +4,6 @@ services:
   app:
     image: ${IMAGE_TAG}
     restart: unless-stopped
-    command: ["node", "fake.js"]
     ports:
       - "3000:3000"
     environment:

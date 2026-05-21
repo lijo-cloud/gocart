@@ -186,7 +186,7 @@ jobs:
             --output text)
 
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-
+      
       - name: Create New Launch Template Version
         run: |
 
@@ -257,3 +257,27 @@ jobs:
             --launch-template-id ${{ vars.LAUNCH_TEMPLATE_ID }} \
             --source-version ${{ steps.lt.outputs.version }} \
             --launch-template-data "{\"UserData\":\"$ENCODED\"}"
+
+      - name: Set Latest Launch Template Version Default
+        run: |
+
+          VERSION=$(aws ec2 describe-launch-template-versions \
+            --launch-template-id ${{ vars.LAUNCH_TEMPLATE_ID }} \
+            --versions '$Latest' \
+            --query 'LaunchTemplateVersions[0].VersionNumber' \
+            --output text)
+
+          aws ec2 modify-launch-template \
+            --launch-template-id ${{ vars.LAUNCH_TEMPLATE_ID }} \
+            --default-version $VERSION
+
+      - name: Start ASG Instance Refresh
+        run: |
+          aws autoscaling start-instance-refresh \
+            --auto-scaling-group-name ${{ vars.ASG_NAME }} \
+            --preferences '{
+              "MinHealthyPercentage": 100,
+              "InstanceWarmup": 180,
+              "AutoRollback": true
+            }'
+      

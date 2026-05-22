@@ -104,10 +104,9 @@ jobs:
 
             mkdir -p /app && cd /app
             
-            cat > .env <<EOF
-            DATABASE_URL=$DATABASE_URL
-            IMAGE_TAG=$IMAGE_TAG
-            EOF
+            printf "DATABASE_URL=%s\nIMAGE_TAG=%s\n" \
+            "$DATABASE_URL" \
+            "$IMAGE_TAG" > .env
             
             CURRENT_IMAGE=$(docker compose images -q app)
 

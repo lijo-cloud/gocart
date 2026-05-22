@@ -59,8 +59,9 @@ jobs:
           tags: |
             ${{ steps.vars.outputs.image_tag }}
             ghcr.io/lijo-cloud/gocart:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # cache-from: type=gha
+          # cache-to: type=gha,mode=max
+          no-cache: true
 
   security_scan:
     name: Security Vulnerability Scan

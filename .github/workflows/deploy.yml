@@ -113,15 +113,15 @@ jobs:
               --output text \
               --region ap-south-1)
 
-            cat > .env <<EOF
+            if [ -z "$DB_URL" ]; then
+            echo "DATABASE_URL is empty"
+            exit 1
+            fi
+
+            cat > .env <<ENVFILE
             DATABASE_URL=$DB_URL
             IMAGE_TAG=$IMAGE_TAG
-            EOF
-            
-            echo "📥 Pulling image..."
-            docker compose pull --quiet
-
-            echo "🚀 Deploying new container..."
+            ENVFILE
 
             echo "📥 Pulling image..."
             docker compose pull --quiet
@@ -216,7 +216,7 @@ jobs:
           cd /app
 
           DB_URL=$(aws ssm get-parameter \
-            --name "/gocart/database/url" \
+            --name "/gocart/prod/database_url" \
             --with-decryption \
             --query "Parameter.Value" \
             --output text \
@@ -277,19 +277,6 @@ jobs:
             --launch-template-id ${{ vars.LAUNCH_TEMPLATE_ID }} \
             --source-version ${{ steps.lt.outputs.version }} \
             --launch-template-data "{\"UserData\":\"$ENCODED\"}"
-
-      - name: Set Latest Launch Template Version Default
-        run: |
-
-          VERSION=$(aws ec2 describe-launch-template-versions \
-            --launch-template-id ${{ vars.LAUNCH_TEMPLATE_ID }} \
-            --versions '$Latest' \
-            --query 'LaunchTemplateVersions[0].VersionNumber' \
-            --output text)
-
-          aws ec2 modify-launch-template \
-            --launch-template-id ${{ vars.LAUNCH_TEMPLATE_ID }} \
-            --default-version $VERSION
 
       - name: Cancel Existing Instance Refresh
         run: |

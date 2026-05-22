@@ -118,7 +118,11 @@ jobs:
             exit 1
           fi
 
-          printf "DATABASE_URL=%s\nIMAGE_TAG=%s\n" "$DB_URL" "$IMAGE_TAG" > .env
+            printf "DATABASE_URL=%s\nIMAGE_TAG=%s\n" \
+            "$DB_URL" \
+            "${{ env.IMAGE_TAG }}" > /app/.env
+
+            cat /app/.env
 
             echo "📥 Pulling image..."
             docker compose pull --quiet
@@ -219,12 +223,18 @@ jobs:
             --output text \
             --region ${{ vars.AWS_REGION }})
 
-          cat > .env <<EOF
-          DATABASE_URL=$DB_URL
-          IMAGE_TAG=${{ env.IMAGE_TAG }}
-          EOF
+          if [ -z "$DB_URL" ]; then
+            echo "DATABASE_URL is empty"
+            exit 1
+          fi
 
-          chmod 600 .env
+          printf "DATABASE_URL=%s\nIMAGE_TAG=%s\n" \
+          "$DB_URL" \
+          "${{ env.IMAGE_TAG }}" > /app/.env
+
+          chmod 600 /app/.env
+
+          cat /app/.env
 
           cat > docker-compose.yml <<EOF
           services:

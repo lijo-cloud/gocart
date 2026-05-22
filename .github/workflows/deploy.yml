@@ -117,11 +117,6 @@ jobs:
             IMAGE_TAG=$IMAGE_TAG
             EOF
 
-            CURRENT_IMAGE=$(docker compose images -q app)
-
-            if [ ! -z "$CURRENT_IMAGE" ]; then
-              docker tag $CURRENT_IMAGE $DOCKER_IMAGE:stable || true
-            fi
 
             echo "📥 Pulling image..."
             docker compose pull --quiet
@@ -149,15 +144,9 @@ jobs:
               echo "✅ Staging deployment successful"
               docker image prune -af --filter "until=24h" || true
             else
-              echo "🚨 Deployment failed. Rolling back..."
-
-              export IMAGE_TAG="$DOCKER_IMAGE:stable"
-
-              docker compose pull --quiet || true
-              docker compose up -d --force-recreate --no-deps app
-
-              sleep 20
-
+              echo "🚨 Staging deployment failed"
+              
+              docker logs app-app-1 --tail 100 || true
               docker ps
 
               exit 1

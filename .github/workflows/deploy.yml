@@ -104,9 +104,11 @@ jobs:
 
             mkdir -p /app && cd /app
             
-            printf "DATABASE_URL=%s\nIMAGE_TAG=%s\n" \
-            "$DATABASE_URL" \
-            "$IMAGE_TAG" > .env
+           ESCAPED_DB_URL=$(printf '%s\n' "$DATABASE_URL" | sed 's/\$/$$/g')
+
+           printf "DATABASE_URL=%s\nIMAGE_TAG=%s\n" \
+           "$ESCAPED_DB_URL" \
+           "$IMAGE_TAG" > .env
             
             CURRENT_IMAGE=$(docker compose images -q app)
 
@@ -221,10 +223,11 @@ jobs:
           mkdir -p /app
           cd /app
 
-          cat > .env <<EOL
-          DATABASE_URL=${{ secrets.DATABASE_URL }}
-          IMAGE_TAG=$IMAGE_TAG
-          EOL
+          ESCAPED_DB_URL=$(printf '%s\n' "${{ secrets.DATABASE_URL }}" | sed 's/\$/$$/g')
+
+          printf "DATABASE_URL=%s\nIMAGE_TAG=%s\n" \
+          "$ESCAPED_DB_URL" \
+          "${{ env.IMAGE_TAG }}" > .env
 
           chmod 600 .env
 

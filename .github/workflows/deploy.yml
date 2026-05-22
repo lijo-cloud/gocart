@@ -100,74 +100,64 @@ jobs:
       - name: Deploy & Verify Staging
         run: |
           ssh -o StrictHostKeyChecking=no ubuntu@${{ vars.STAGING_SERVER_IP }} \
-            "export IMAGE_TAG='$IMAGE_TAG'; export DATABASE_URL='$DATABASE_URL'; export DOCKER_IMAGE='${{ env.DOCKER_IMAGE }}'; bash -s" << 'EOF'
+          "export IMAGE_TAG='$IMAGE_TAG'; export DATABASE_URL='$DATABASE_URL'; export DOCKER_IMAGE='${{ env.DOCKER_IMAGE }}'; bash -s" << 'EOF'
+
+            set -e
 
             mkdir -p /app && cd /app
-            
-           ESCAPED_DB_URL=$(printf '%s\n' "$DATABASE_URL" | sed 's/\$/$$/g')
 
-           printf "DATABASE_URL=%s\nIMAGE_TAG=%s\n" \
-           "$ESCAPED_DB_URL" \
-           "$IMAGE_TAG" > .env
-            
+            ESCAPED_DB_URL=$(printf '%s\n' "$DATABASE_URL" | sed 's/\$/$$/g')
+
+            printf "DATABASE_URL=%s\nIMAGE_TAG=%s\n" \
+            "$ESCAPED_DB_URL" \
+            "$IMAGE_TAG" > .env
+
             CURRENT_IMAGE=$(docker compose images -q app)
 
             if [ ! -z "$CURRENT_IMAGE" ]; then
-              docker tag $CURRENT_IMAGE $DOCKER_IMAGE:stable
+              docker tag $CURRENT_IMAGE $DOCKER_IMAGE:stable || true
             fi
 
-            
+            echo "📥 Pulling image..."
+            docker compose pull --quiet
 
-            echo "📥 Pulling image on Staging..."
-            docker compose pull --quiet || exit 1
-
-            echo "🛑 Stopping old container..."
-            docker compose down
-
-            echo "🚀 Updating Staging container..."
+            echo "🚀 Deploying new container..."
             docker compose up -d --force-recreate --no-deps app
 
-            if curl -f http://localhost:3000/api/health >/dev/null 2>&1; then
-              echo "✅ Staging healthy!"
-              docker image prune -af --filter "until=24h"   # ✅ Prune only AFTER confirmed healthy
-            else
-              echo "🚨 Rolling back..."
-              export IMAGE_TAG="$DOCKER_IMAGE:stable"
-              docker compose pull --quiet
-              docker compose up -d --force-recreate  --no-deps app
-              exit 1
-            fi
+            echo "⏳ Waiting for app startup..."
+            sleep 40
 
-            docker ps
-            docker compose images
-
-            echo "⏳ Verifying Staging health..."
+            HEALTHY=false
 
             for i in $(seq 1 30); do
               if curl -f http://localhost:3000/api/health >/dev/null 2>&1; then
-                echo "Healthy"
+                HEALTHY=true
+                echo "✅ Health check passed"
                 break
               fi
-              sleep 5
+
+              echo "Waiting... attempt $i"
+              sleep 10
             done
 
-            if curl -f http://localhost:3000/api/health >/dev/null 2>&1; then
-              echo "✅ Staging environment is healthy!"
-              docker image prune -af --filter "until=24h"
+            if [ "$HEALTHY" = true ]; then
+              echo "✅ Staging deployment successful"
+              docker image prune -af --filter "until=24h" || true
             else
-              echo "🚨 Staging failed health check!"
+              echo "🚨 Deployment failed. Rolling back..."
 
               export IMAGE_TAG="$DOCKER_IMAGE:stable"
-              
-              docker compose pull --quiet   # ← add this line
 
-              docker compose up -d --force-recreate  --no-deps app
+              docker compose pull --quiet || true
+              docker compose up -d --force-recreate --no-deps app
+
+              sleep 20
 
               docker ps
-              docker compose images
 
               exit 1
             fi
+
           EOF
 
   approve_production:

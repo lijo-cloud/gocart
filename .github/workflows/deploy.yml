@@ -87,7 +87,6 @@ jobs:
 
     env:
       IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
     steps:
       - uses: actions/checkout@v4
@@ -100,17 +99,23 @@ jobs:
       - name: Deploy & Verify Staging
         run: |
           ssh -o StrictHostKeyChecking=no ubuntu@${{ vars.STAGING_SERVER_IP }} \
-          "export IMAGE_TAG='$IMAGE_TAG'; export DATABASE_URL='$DATABASE_URL'; export DOCKER_IMAGE='${{ env.DOCKER_IMAGE }}'; bash -s" << 'EOF'
+          "export IMAGE_TAG='$IMAGE_TAG'; export DOCKER_IMAGE='${{ env.DOCKER_IMAGE }}'; bash -s" << 'EOF'
 
             set -e
 
             mkdir -p /app && cd /app
 
-            ESCAPED_DB_URL=$(printf '%s\n' "$DATABASE_URL" | sed 's/\$/$$/g')
+           DB_URL=$(aws ssm get-parameter \
+              --name "/gocart/prod/database_url" \
+              --with-decryption \
+              --query "Parameter.Value" \
+              --output text \
+              --region ap-south-1)
 
-            printf "DATABASE_URL=%s\nIMAGE_TAG=%s\n" \
-            "$ESCAPED_DB_URL" \
-            "$IMAGE_TAG" > .env
+            cat > .env <<EOF
+            DATABASE_URL=$DB_URL
+            IMAGE_TAG=$IMAGE_TAG
+            EOF
 
             CURRENT_IMAGE=$(docker compose images -q app)
 
@@ -213,11 +218,17 @@ jobs:
           mkdir -p /app
           cd /app
 
-          ESCAPED_DB_URL=$(printf '%s\n' "${{ secrets.DATABASE_URL }}" | sed 's/\$/$$/g')
+          DB_URL=$(aws ssm get-parameter \
+            --name "/gocart/database/url" \
+            --with-decryption \
+            --query "Parameter.Value" \
+            --output text \
+            --region ${{ vars.AWS_REGION }})
 
-          printf "DATABASE_URL=%s\nIMAGE_TAG=%s\n" \
-          "$ESCAPED_DB_URL" \
-          "${{ env.IMAGE_TAG }}" > .env
+          cat > .env <<EOF
+          DATABASE_URL=$DB_URL
+          IMAGE_TAG=${{ env.IMAGE_TAG }}
+          EOF
 
           chmod 600 .env
 

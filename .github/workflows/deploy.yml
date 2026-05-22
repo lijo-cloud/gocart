@@ -285,12 +285,21 @@ jobs:
 
       - name: Start ASG Instance Refresh
         run: |
+
+          VERSION=$(aws ec2 describe-launch-template-versions \
+            --launch-template-id ${{ vars.LAUNCH_TEMPLATE_ID }} \
+            --versions '$Latest' \
+            --query 'LaunchTemplateVersions[0].VersionNumber' \
+            --output text)
+
+          echo "Using Launch Template Version: $VERSION"
+
           aws autoscaling start-instance-refresh \
             --auto-scaling-group-name ${{ vars.ASG_NAME }} \
             --desired-configuration '{
               "LaunchTemplate": {
                 "LaunchTemplateId": "${{ vars.LAUNCH_TEMPLATE_ID }}",
-                "Version": "$Latest"
+                "Version": "'"$VERSION"'"
               }
             }' \
             --preferences '{
@@ -298,4 +307,4 @@ jobs:
               "InstanceWarmup": 180,
               "AutoRollback": true
             }'
-      
+            

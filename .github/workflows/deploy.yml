@@ -283,6 +283,23 @@ jobs:
             --launch-template-id ${{ vars.LAUNCH_TEMPLATE_ID }} \
             --default-version $VERSION
 
+      - name: Cancel Existing Instance Refresh
+        run: |
+
+          REFRESH_ID=$(aws autoscaling describe-instance-refreshes \
+            --auto-scaling-group-name ${{ vars.ASG_NAME }} \
+            --query "InstanceRefreshes[?Status=='InProgress'].InstanceRefreshId" \
+            --output text)
+
+          if [ ! -z "$REFRESH_ID" ]; then
+            echo "Cancelling existing refresh: $REFRESH_ID"
+
+            aws autoscaling cancel-instance-refresh \
+              --auto-scaling-group-name ${{ vars.ASG_NAME }}
+          else
+            echo "No active instance refresh"
+          fi
+
       - name: Pin ASG to Numeric Launch Template Version
         run: |
 

@@ -125,7 +125,7 @@ jobs:
             docker compose down
 
             echo "🚀 Updating Staging container..."
-            docker compose up -d --force-recreate --wait --no-deps app
+            docker compose up -d --force-recreate --no-deps app
 
             if curl -f http://localhost:3000/api/health >/dev/null 2>&1; then
               echo "✅ Staging healthy!"
@@ -134,7 +134,7 @@ jobs:
               echo "🚨 Rolling back..."
               export IMAGE_TAG="$DOCKER_IMAGE:stable"
               docker compose pull --quiet
-              docker compose up -d --force-recreate --wait --no-deps app
+              docker compose up -d --force-recreate  --no-deps app
               exit 1
             fi
 
@@ -161,7 +161,7 @@ jobs:
               
               docker compose pull --quiet   # ← add this line
 
-              docker compose up -d --force-recreate --wait --no-deps app
+              docker compose up -d --force-recreate  --no-deps app
 
               docker ps
               docker compose images

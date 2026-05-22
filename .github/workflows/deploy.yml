@@ -106,6 +106,7 @@ jobs:
             
             cat > .env <<EOF
             DATABASE_URL=$DATABASE_URL
+            IMAGE_TAG=$IMAGE_TAG
             EOF
             
             CURRENT_IMAGE=$(docker compose images -q app)
@@ -114,14 +115,27 @@ jobs:
               docker tag $CURRENT_IMAGE $DOCKER_IMAGE:stable
             fi
 
-            echo "🧹 Cleaning old Docker images..."
-            docker image prune -f || true
+            
 
             echo "📥 Pulling image on Staging..."
             docker compose pull --quiet || exit 1
 
+            echo "🛑 Stopping old container..."
+            docker compose down
+
             echo "🚀 Updating Staging container..."
             timeout 120 docker compose up -d --force-recreate --wait --no-deps app
+
+            if curl -f http://localhost:3000/api/health >/dev/null 2>&1; then
+              echo "✅ Staging healthy!"
+              docker image prune -f   # ✅ Prune only AFTER confirmed healthy
+            else
+              echo "🚨 Rolling back..."
+              export IMAGE_TAG="$DOCKER_IMAGE:stable"
+              docker compose pull --quiet
+              timeout 120 docker compose up -d --force-recreate --wait --no-deps app
+              exit 1
+            fi
 
             docker ps
             docker compose images

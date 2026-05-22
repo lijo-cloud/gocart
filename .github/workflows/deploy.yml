@@ -113,15 +113,12 @@ jobs:
               --output text \
               --region ap-south-1)
 
-            if [ -z "$DB_URL" ]; then
+          if [ -z "$DB_URL" ]; then
             echo "DATABASE_URL is empty"
             exit 1
-            fi
+          fi
 
-            cat > .env <<ENVFILE
-            DATABASE_URL=$DB_URL
-            IMAGE_TAG=$IMAGE_TAG
-            ENVFILE
+          printf "DATABASE_URL=%s\nIMAGE_TAG=%s\n" "$DB_URL" "$IMAGE_TAG" > .env
 
             echo "📥 Pulling image..."
             docker compose pull --quiet

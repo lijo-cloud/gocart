@@ -128,7 +128,7 @@ jobs:
 
             if curl -f http://localhost:3000/api/health >/dev/null 2>&1; then
               echo "✅ Staging healthy!"
-              docker image prune -f   # ✅ Prune only AFTER confirmed healthy
+              docker image prune -af --filter "until=24h"   # ✅ Prune only AFTER confirmed healthy
             else
               echo "🚨 Rolling back..."
               export IMAGE_TAG="$DOCKER_IMAGE:stable"
@@ -152,7 +152,7 @@ jobs:
 
             if curl -f http://localhost:3000/api/health >/dev/null 2>&1; then
               echo "✅ Staging environment is healthy!"
-              docker image prune -f
+              docker image prune -af --filter "until=24h"
             else
               echo "🚨 Staging failed health check!"
 
@@ -222,9 +222,10 @@ jobs:
           mkdir -p /app
           cd /app
 
-          cat > .env <<EOF
+          cat > .env <<EOL
           DATABASE_URL=${{ secrets.DATABASE_URL }}
-          EOF
+          IMAGE_TAG=$IMAGE_TAG
+          EOL
 
           chmod 600 .env
 
@@ -266,6 +267,7 @@ jobs:
 
           docker ps
           curl http://localhost:3000/api/health || true
+          docker image prune -af --filter "until=24h"
 
           SCRIPT
 

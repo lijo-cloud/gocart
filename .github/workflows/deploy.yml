@@ -283,7 +283,7 @@ jobs:
             --launch-template-id ${{ vars.LAUNCH_TEMPLATE_ID }} \
             --default-version $VERSION
 
-      - name: Start ASG Instance Refresh
+      - name: Pin ASG to Numeric Launch Template Version
         run: |
 
           VERSION=$(aws ec2 describe-launch-template-versions \
@@ -293,6 +293,19 @@ jobs:
             --output text)
 
           echo "Using Launch Template Version: $VERSION"
+
+          aws autoscaling update-auto-scaling-group \
+            --auto-scaling-group-name ${{ vars.ASG_NAME }} \
+            --launch-template "LaunchTemplateId=${{ vars.LAUNCH_TEMPLATE_ID }},Version=$VERSION"
+            
+      - name: Start ASG Instance Refresh
+        run: |
+
+          VERSION=$(aws ec2 describe-launch-template-versions \
+            --launch-template-id ${{ vars.LAUNCH_TEMPLATE_ID }} \
+            --versions '$Latest' \
+            --query 'LaunchTemplateVersions[0].VersionNumber' \
+            --output text)
 
           aws autoscaling start-instance-refresh \
             --auto-scaling-group-name ${{ vars.ASG_NAME }} \
@@ -307,4 +320,3 @@ jobs:
               "InstanceWarmup": 180,
               "AutoRollback": true
             }'
-            

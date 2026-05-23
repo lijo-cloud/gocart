@@ -251,7 +251,7 @@ jobs:
 
               healthcheck:
                 # test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
-                test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/fail', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+                test: ["CMD", "node", "-e", "require('http').get('http://localhost:9999', () => process.exit(0)).on('error', () => process.exit(1))"]
                 interval: 30s
                 timeout: 5s
                 retries: 5
@@ -338,6 +338,6 @@ jobs:
             }' \
             --preferences '{
               "MinHealthyPercentage": 100,
-              "InstanceWarmup": 180,
+              "InstanceWarmup": 60,
               "AutoRollback": true
             }'

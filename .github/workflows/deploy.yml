@@ -287,22 +287,45 @@ jobs:
             --source-version ${{ steps.lt.outputs.version }} \
             --launch-template-data "{\"UserData\":\"$ENCODED\"}"
 
-      - name: Cancel Existing Instance Refresh
-        run: |
+            - name: Cancel Existing Instance Refresh
+              run: |
 
-          REFRESH_ID=$(aws autoscaling describe-instance-refreshes \
-            --auto-scaling-group-name ${{ vars.ASG_NAME }} \
-            --query "InstanceRefreshes[?Status=='InProgress'].InstanceRefreshId" \
-            --output text)
+                REFRESH_ID=$(aws autoscaling describe-instance-refreshes \
+                  --auto-scaling-group-name ${{ vars.ASG_NAME }} \
+                  --query "InstanceRefreshes[?Status=='InProgress'].InstanceRefreshId" \
+                  --output text)
 
-          if [ ! -z "$REFRESH_ID" ]; then
-            echo "Cancelling existing refresh: $REFRESH_ID"
+                if [ ! -z "$REFRESH_ID" ] && [ "$REFRESH_ID" != "None" ]; then
 
-            aws autoscaling cancel-instance-refresh \
-              --auto-scaling-group-name ${{ vars.ASG_NAME }}
-          else
-            echo "No active instance refresh"
-          fi
+                  echo "Cancelling existing refresh: $REFRESH_ID"
+
+                  aws autoscaling cancel-instance-refresh \
+                    --auto-scaling-group-name ${{ vars.ASG_NAME }} \
+                    --instance-refresh-id $REFRESH_ID
+
+                  echo "Waiting for cancellation to complete..."
+
+                  while true; do
+
+                    STATUS=$(aws autoscaling describe-instance-refreshes \
+                      --auto-scaling-group-name ${{ vars.ASG_NAME }} \
+                      --query "InstanceRefreshes[0].Status" \
+                      --output text)
+
+                    echo "Current status: $STATUS"
+
+                    if [[ "$STATUS" == "Cancelled" || "$STATUS" == "Failed" || "$STATUS" == "Successful" ]]; then
+                      echo "Refresh cleanup completed"
+                      break
+                    fi
+
+                    sleep 15
+
+                  done
+
+                else
+                  echo "No active instance refresh"
+                fi
 
       - name: Pin ASG to Numeric Launch Template Version
         run: |

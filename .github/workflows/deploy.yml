@@ -300,7 +300,7 @@ jobs:
 
                   aws autoscaling cancel-instance-refresh \
                     --auto-scaling-group-name ${{ vars.ASG_NAME }} \
-                    --instance-refresh-id $REFRESH_ID
+                    
 
                   echo "Waiting for cancellation to complete..."
 

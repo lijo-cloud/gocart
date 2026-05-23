@@ -286,8 +286,8 @@ jobs:
             --source-version ${{ steps.lt.outputs.version }} \
             --launch-template-data "{\"UserData\":\"$ENCODED\"}"
 
-            - name: Cancel Existing Instance Refresh
-              run: |
+      - name: Cancel Existing Instance Refresh
+        run: |
 
                 REFRESH_ID=$(aws autoscaling describe-instance-refreshes \
                   --auto-scaling-group-name ${{ vars.ASG_NAME }} \
@@ -326,6 +326,7 @@ jobs:
                   echo "No active instance refresh"
                 fi
 
+                
       - name: Pin ASG to Numeric Launch Template Version
         run: |
 
@@ -343,7 +344,6 @@ jobs:
             
       - name: Start ASG Instance Refresh
         run: |
-
           VERSION=$(aws ec2 describe-launch-template-versions \
             --launch-template-id ${{ vars.LAUNCH_TEMPLATE_ID }} \
             --versions '$Latest' \

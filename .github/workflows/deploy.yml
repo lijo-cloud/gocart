@@ -296,7 +296,7 @@ jobs:
 
                 if [ ! -z "$REFRESH_ID" ] && [ "$REFRESH_ID" != "None" ]; then
 
-                  echo "Cancelling existing refresh: $REFRESH_ID"
+                  echo "Cancelling existing refreshh: $REFRESH_ID"
 
                   aws autoscaling cancel-instance-refresh \
                     --auto-scaling-group-name ${{ vars.ASG_NAME }} \

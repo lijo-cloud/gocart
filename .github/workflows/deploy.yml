@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch: # 👈 Add this line here
 
 env:
   DOCKER_IMAGE: "ghcr.io/lijo-cloud/gocart"

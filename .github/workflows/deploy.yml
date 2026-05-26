@@ -299,7 +299,7 @@ jobs:
 
                   echo "Cancelling existing refreshh: $REFRESH_ID"
 
-                   # 👇 CHANGED: Fixed the trailing backslash and added the missing parameter flag
+                   # 👇 CHANGED: Fixed the trailing backslash and added the missing parameter flagg
                   aws autoscaling cancel-instance-refresh \
                     --auto-scaling-group-name ${{ vars.ASG_NAME }} \
                     --instance-refresh-id "$REFRESH_ID"

@@ -146,6 +146,7 @@ jobs:
           DEPLOYMENT_ID=$(aws deploy create-deployment \
             --application-name ${{ vars.CODEDEPLOY_APP_NAME }} \
             --deployment-group-name ${{ vars.CODEDEPLOY_GROUP_NAME }} \
+            --file-exists-behavior OVERWRITE \
             --s3-location bucket=${{ vars.AWS_DEPLOY_S3_BUCKET }},bundleType=zip,key=production/$S3_KEY \
             --query "deploymentId" \
             --output text)

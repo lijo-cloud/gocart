@@ -4,11 +4,6 @@ const nextConfig = {
         unoptimized: true
     },
     output: 'standalone',
-    generateEtags: false,
-  webpack: (config) => {
-    config.output.filename = 'static/chunks/[name].[contenthash].js';
-    return config;
-  }
 };
 
 export default nextConfig;

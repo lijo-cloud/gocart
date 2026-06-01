@@ -4,8 +4,10 @@ const nextConfig = {
         unoptimized: true
     },
     output: 'standalone',
-    generateBuildId: async () => {
-    return process.env.GIT_COMMIT || Date.now().toString();
+    generateEtags: false,
+  webpack: (config) => {
+    config.output.filename = 'static/chunks/[name].[contenthash].js';
+    return config;
   }
 };
 

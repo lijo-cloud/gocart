@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-exec > /var/log/start_app.log 2>&1
-
+# exec > /var/log/start_app.log 2>&1
+exec > >(tee -a /var/log/start_app.log) 2>&1
 cd /app
 
 echo "Starting deployment..."
@@ -36,14 +36,27 @@ services:
       - .env
 EOF
 
-docker compose down --remove-orphans || true
+docker compose down || true
 docker compose pull
-docker compose up -d --force-recreate
+docker compose up -d
 
 echo "Waiting for app..."
 
-sleep 20
+# 
+# ✅ Retry loop + rollback on failure
+HEALTHY=false
+for i in $(seq 1 12); do
+  if curl -sf http://localhost:3000/api/health; then
+    HEALTHY=true; break
+  fi
+  echo "Attempt $i failed, retrying in 10s..."
+  sleep 10
+done
 
-curl -f http://localhost:3000/api/health
+if [ "$HEALTHY" = false ]; then
+  echo "Health check failed — rolling back"
+  docker compose down
+  exit 1   # CodeDeploy sees non-zero exit and triggers auto-rollback
+fi
 
 echo "Deployment successful"

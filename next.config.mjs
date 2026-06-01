@@ -3,7 +3,10 @@ const nextConfig = {
     images:{
         unoptimized: true
     },
-    output: 'standalone'
+    output: 'standalone',
+    generateBuildId: async () => {
+    return process.env.GIT_COMMIT || Date.now().toString();
+  }
 };
 
 export default nextConfig;

@@ -103,6 +103,8 @@ jobs:
       # ✅ MODIFIED STEP: sudo added, aws ssm call removed, DB_URL passed via env
       - name: Deploy & Verify Staging
         run: |
+          scp -o StrictHostKeyChecking=no docker-compose.yml ubuntu@${{ vars.STAGING_SERVER_IP }}:/app/docker-compose.yml
+
           ssh -o StrictHostKeyChecking=no ubuntu@${{ vars.STAGING_SERVER_IP }} \
           "export IMAGE_TAG='$IMAGE_TAG'; export DOCKER_IMAGE='${{ env.DOCKER_IMAGE }}'; export DB_URL='${{ env.DB_URL }}'; bash -s" << 'EOF'
             set -e

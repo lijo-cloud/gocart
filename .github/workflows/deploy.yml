@@ -82,15 +82,34 @@ jobs:
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+     # ✅ NEW STEP 1: Add AWS OIDC auth (copy from deploy_production)
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      # ✅ NEW STEP 2: Fetch the secret HERE in the runner, not on the server
+      - name: Fetch DB URL from SSM
+        run: |
+          DB_URL=$(aws ssm get-parameter \
+            --name "/gocart/prod/database_url" \
+            --with-decryption \
+            --query "Parameter.Value" \
+            --output text \
+            --region ap-south-1)
+          echo "DB_URL=$DB_URL" >> $GITHUB_ENV
+
+      # ✅ MODIFIED STEP: sudo added, aws ssm call removed, DB_URL passed via env
       - name: Deploy & Verify Staging
         run: |
           ssh -o StrictHostKeyChecking=no ubuntu@${{ vars.STAGING_SERVER_IP }} \
-          "export IMAGE_TAG='$IMAGE_TAG'; export DOCKER_IMAGE='${{ env.DOCKER_IMAGE }}'; bash -s" << 'EOF'
+          "export IMAGE_TAG='$IMAGE_TAG'; export DOCKER_IMAGE='${{ env.DOCKER_IMAGE }}'; export DB_URL='${{ env.DB_URL }}'; bash -s" << 'EOF'
             set -e
-            mkdir -p /app && cd /app
-            DB_URL=$(aws ssm get-parameter --name "/gocart/prod/database_url" --with-decryption --query "Parameter.Value" --output text --region ap-south-1)
-            if [ -z "$DB_URL" ]; then exit 1; fi
-            printf "DATABASE_URL=%s\nIMAGE_TAG=%s\n" "$DB_URL" "${{ env.IMAGE_TAG }}" > /app/.env
+            sudo mkdir -p /app && sudo chown ubuntu:ubuntu /app   # 👈 fixes permission error
+            cd /app
+            if [ -z "$DB_URL" ]; then exit 1; fi                  # 👈 no aws CLI needed on server
+            printf "DATABASE_URL=%s\nIMAGE_TAG=%s\n" "$DB_URL" "$IMAGE_TAG" > /app/.env
             docker compose pull --quiet
             docker compose down --remove-orphans
             docker compose up -d
@@ -102,7 +121,7 @@ jobs:
             done
             if [ "$HEALTHY" = true ]; then docker image prune -af --filter "until=24h" || true; else exit 1; fi
           EOF
-
+          
   approve_production:
     name: Gate Production Approval
     runs-on: ubuntu-latest

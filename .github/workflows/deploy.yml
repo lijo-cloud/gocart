@@ -96,7 +96,7 @@ jobs:
       - name: Fetch DB URL from SSM
         run: |
           DB_URL=$(aws ssm get-parameter \
-            --name "/gocart/prod/database_url" \
+            --name "/gocart/staging/database_url" \
             --with-decryption \
             --query "Parameter.Value" \
             --output text \

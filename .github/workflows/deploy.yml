@@ -43,15 +43,18 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.GHCR_PIPELINE_TOKEN }}
       - uses: docker/build-push-action@v5
         with:
           context: .
           push: true
+          pull: true  # 👈 Forces Docker to look for new base image updates
           tags: |
             ${{ steps.vars.outputs.image_tag }}
             ghcr.io/lijo-cloud/gocart:latest
-          no-cache: true
+          # no-cache: true
+          cache-from: type=gha # 👈 Tells Docker to pull cache from GitHub Actions
+          cache-to: type=gha,mode=max # 👈 Tells Docker to save cache to GitHub Actions
 
   security_scan:
     name: Security Vulnerability Scan

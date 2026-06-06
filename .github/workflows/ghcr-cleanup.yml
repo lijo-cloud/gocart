@@ -2,8 +2,8 @@ name: Automated GHCR Cleanup
 
 on:
   schedule:
-    - cron: '0 0 * * 0' # ⏰ Runs every Sunday at midnight UTC
-  workflow_dispatch: # 🚀 Allows you to trigger it manually from the Actions tab
+    - cron: '0 0 * * 0' #  Runs every Sunday at midnight UTC
+  workflow_dispatch: #  Allows you to trigger it manually from the Actions tab
 
 jobs:
   clean-old-images:
@@ -12,10 +12,10 @@ jobs:
       - name: Prune Old Container Images
         uses: dataaxiom/ghcr-cleanup-action@v1
         with:
-          token: ${{ secrets.GHCR_PIPELINE_TOKEN }} # 👈 Uses your new PAT for total admin access
+          token: ${{ secrets.GHCR_PIPELINE_TOKEN }} #  Uses your new PAT for total admin access
           package: 'gocart'
-          exclude-tags: 'latest' # 🛑 DO NOT delete the latest production tag
-          keep-n-tagged: 5 # 📦 Keep only the 5 most recent SHA versions
-          keep-n-untagged: 0 # 🧼 Instantly wipe out untagged cache fragments
-          dry-run: true    # 🧪 Change to 'false' ONLY after verifying logs look correct
-          log-level: debug # 📊 Optional: Use this if you want absolute maximum log detail
+          exclude-tags: 'latest' #  DO NOT delete the latest production tag
+          keep-n-tagged: 5 #  Keep only the 5 most recent SHA versions
+          keep-n-untagged: 0 #  Instantly wipe out untagged cache fragments
+          dry-run: true    #  Change to 'false' ONLY after verifying logs look correct
+          log-level: debug #  Optional: Use this if you want absolute maximum log detail

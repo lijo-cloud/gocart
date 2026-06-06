@@ -9,7 +9,7 @@ env:
   DOCKER_IMAGE: "ghcr.io/lijo-cloud/gocart"
 
 permissions:
-  id-token: write # 👈 Required for AWS OIDC authentication
+  id-token: write # Required for AWS OIDC authentication
   contents: read
   packages: write
 
@@ -48,13 +48,13 @@ jobs:
         with:
           context: .
           push: true
-          pull: true  # 👈 Forces Docker to look for new base image updates
+          pull: true  # Forces Docker to look for new base image updates
           tags: |
             ${{ steps.vars.outputs.image_tag }}
             ghcr.io/lijo-cloud/gocart:latest
           # no-cache: true
-          cache-from: type=gha # 👈 Tells Docker to pull cache from GitHub Actions
-          cache-to: type=gha,mode=max # 👈 Tells Docker to save cache to GitHub Actions
+          cache-from: type=gha # Tells Docker to pull cache from GitHub Actions
+          cache-to: type=gha,mode=max #  Tells Docker to save cache to GitHub Actions
 
   security_scan:
     name: Security Vulnerability Scan
@@ -85,14 +85,14 @@ jobs:
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-     # ✅ NEW STEP 1: Add AWS OIDC auth (copy from deploy_production)
+     #  NEW STEP 1: Add AWS OIDC auth (copy from deploy_production)
       - name: Configure AWS Credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      # ✅ NEW STEP 2: Fetch the secret HERE in the runner, not on the server
+      #  NEW STEP 2: Fetch the secret HERE in the runner, not on the server
       - name: Fetch DB URL from SSM
         run: |
           DB_URL=$(aws ssm get-parameter \
@@ -103,7 +103,7 @@ jobs:
             --region ap-south-1)
           echo "DB_URL=$DB_URL" >> $GITHUB_ENV
 
-      # ✅ MODIFIED STEP: sudo added, aws ssm call removed, DB_URL passed via env
+      #  MODIFIED STEP: sudo added, aws ssm call removed, DB_URL passed via env
       - name: Deploy & Verify Staging
         run: |
           scp -o StrictHostKeyChecking=no docker-compose.yml ubuntu@${{ vars.STAGING_SERVER_IP }}:/app/docker-compose.yml
@@ -111,9 +111,9 @@ jobs:
           ssh -o StrictHostKeyChecking=no ubuntu@${{ vars.STAGING_SERVER_IP }} \
           "export IMAGE_TAG='$IMAGE_TAG'; export DOCKER_IMAGE='${{ env.DOCKER_IMAGE }}'; export DB_URL='${{ env.DB_URL }}'; bash -s" << 'EOF'
             set -e
-            sudo mkdir -p /app && sudo chown ubuntu:ubuntu /app   # 👈 fixes permission error
+            sudo mkdir -p /app && sudo chown ubuntu:ubuntu /app   #  fixes permission error
             cd /app
-            if [ -z "$DB_URL" ]; then exit 1; fi                  # 👈 no aws CLI needed on server
+            if [ -z "$DB_URL" ]; then exit 1; fi                  #  no aws CLI needed on server
             printf "DATABASE_URL=%s\nIMAGE_TAG=%s\n" "$DB_URL" "$IMAGE_TAG" > /app/.env
             docker compose pull --quiet
             docker compose down --remove-orphans

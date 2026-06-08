@@ -1,11 +1,22 @@
 # --- Build Stage ---
 FROM node:22-alpine AS builder
 WORKDIR /app
+
+# 1. Copy package files and install dependencies
 COPY package*.json ./
 RUN npm ci
+
+# 2. Copy Prisma folder and generate the engine binaries
+COPY prisma ./prisma/
+RUN npx prisma generate
+
+# 3. Copy the rest of the application files after the engine is ready
 COPY . .
+
+# 4. Set environment and run NextJS build
 ENV NEXT_PRIVATE_STANDALONE=true
 RUN npm run build
+
 
 # --- Production Runner Stage ---
 FROM node:22-alpine AS runner

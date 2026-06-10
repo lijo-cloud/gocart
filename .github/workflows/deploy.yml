@@ -90,7 +90,7 @@ jobs:
     steps:
       - name: Set Tag
         run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
-        
+
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:
@@ -111,22 +111,21 @@ jobs:
     name: Deploy to Staging
     runs-on: ubuntu-latest
     needs: [build-and-push, security_scan]
-    env:
-      IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+
     steps:
       - uses: actions/checkout@v4
+
       - name: Setup SSH Agent
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-     #  NEW STEP 1: Add AWS OIDC auth (copy from deploy_production)
+
       - name: Configure AWS Credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      #  NEW STEP 2: Fetch the secret HERE in the runner, not on the server
       - name: Fetch DB URL from SSM
         run: |
           DB_URL=$(aws ssm get-parameter \
@@ -137,28 +136,54 @@ jobs:
             --region ap-south-1)
           echo "DB_URL=$DB_URL" >> $GITHUB_ENV
 
-      #  MODIFIED STEP: sudo added, aws ssm call removed, DB_URL passed via env
+      - name: Set Tag
+        run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
+
       - name: Deploy & Verify Staging
         run: |
           scp -o StrictHostKeyChecking=no docker-compose.yml ubuntu@${{ vars.STAGING_SERVER_IP }}:/app/docker-compose.yml
 
           ssh -o StrictHostKeyChecking=no ubuntu@${{ vars.STAGING_SERVER_IP }} \
-          "export IMAGE_TAG='$IMAGE_TAG'; export DOCKER_IMAGE='${{ env.DOCKER_IMAGE }}'; export DB_URL='${{ env.DB_URL }}'; bash -s" << 'EOF'
+          "export DB_URL='${{ env.DB_URL }}'; export SHORT_SHA='${{ env.SHORT_SHA }}'; bash -s" << 'EOF'
             set -e
-            sudo mkdir -p /app && sudo chown ubuntu:ubuntu /app   #  fixes permission error
+
+            sudo mkdir -p /app
+            sudo chown ubuntu:ubuntu /app
+
             cd /app
-            if [ -z "$DB_URL" ]; then exit 1; fi                  #  no aws CLI needed on server
-            printf "DATABASE_URL=%s\nIMAGE_TAG=%s\n" "$DB_URL" "$IMAGE_TAG" > /app/.env
+
+            if [ -z "$DB_URL" ]; then
+              echo "DB_URL is empty"
+              exit 1
+            fi
+
+            printf "NESTJS_IMAGE_TAG=%s\nNEXTJS_IMAGE_TAG=%s\nDATABASE_URL=%s\nNEXT_PUBLIC_API_URL=/api\n" \
+              "ghcr.io/lijo-cloud/gocart-api:$SHORT_SHA" \
+              "ghcr.io/lijo-cloud/gocart-web:$SHORT_SHA" \
+              "$DB_URL" > .env
+
+            cat .env
+
             docker compose pull --quiet
             docker compose down --remove-orphans
             docker compose up -d
+
             sleep 40
+
             HEALTHY=false
             for i in $(seq 1 30); do
-              if curl -f http://localhost:3000/api/health >/dev/null 2>&1; then HEALTHY=true; break; fi
+              if curl -f http://localhost:3000/api/health >/dev/null 2>&1; then
+                HEALTHY=true
+                break
+              fi
               sleep 10
             done
-            if [ "$HEALTHY" = true ]; then docker image prune -af --filter "until=24h" || true; else exit 1; fi
+
+            if [ "$HEALTHY" = true ]; then
+              docker image prune -af --filter "until=24h" || true
+            else
+              exit 1
+            fi
           EOF
           
   approve_production:

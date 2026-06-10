@@ -141,10 +141,15 @@ jobs:
 
       - name: Deploy & Verify Staging
         run: |
+          SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)
           scp -o StrictHostKeyChecking=no docker-compose.yml ubuntu@${{ vars.STAGING_SERVER_IP }}:/app/docker-compose.yml
 
           ssh -o StrictHostKeyChecking=no ubuntu@${{ vars.STAGING_SERVER_IP }} \
-          "export DB_URL='${{ env.DB_URL }}'; export SHORT_SHA='${{ env.SHORT_SHA }}'; bash -s" << 'EOF'
+          "export SHORT_SHA='$SHORT_SHA'; \
+          export DB_URL='${{ env.DB_URL }}'; \
+          export GHCR_USERNAME='${{ github.actor }}'; \
+          export GHCR_TOKEN='${{ secrets.GHCR_PIPELINE_TOKEN }}'; \
+          bash -s" << 'EOF'
             set -e
 
             sudo mkdir -p /app
@@ -160,9 +165,14 @@ jobs:
             printf "NESTJS_IMAGE_TAG=%s\nNEXTJS_IMAGE_TAG=%s\nDATABASE_URL=%s\nNEXT_PUBLIC_API_URL=/api\n" \
               "ghcr.io/lijo-cloud/gocart-api:$SHORT_SHA" \
               "ghcr.io/lijo-cloud/gocart-web:$SHORT_SHA" \
-              "$DB_URL" > .env
+              "$DB_URL" > /app/.env
 
-            cat .env
+            echo "USER=$GHCR_USERNAME"
+            echo "TOKEN_LENGTH=${#GHCR_TOKEN}"
+
+            echo "$GHCR_TOKEN" | docker login ghcr.io \
+              -u "$GHCR_USERNAME" \
+              --password-stdin
 
             docker compose pull --quiet
             docker compose down --remove-orphans

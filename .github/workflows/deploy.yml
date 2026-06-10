@@ -18,13 +18,23 @@ jobs:
   test:
     name: Code Quality & Testing
     runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        app: [backend, frontend]
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'npm'
-      - run: npm ci
+          cache: npm
+          cache-dependency-path: ${{ matrix.app }}/package-lock.json
+
+      - name: Install Dependencies
+        working-directory: ${{ matrix.app }}
+        run: npm ci
 
   build-and-push:
     name: Build & Push Image

@@ -1,16 +1,14 @@
 #!/bin/bash
 set -e
-
-# exec > /var/log/start_app.log 2>&1
 exec > >(tee -a /var/log/start_app.log) 2>&1
 cd /app
 
 echo "Starting deployment..."
 
-# 1. Load the target image tag from the deployment bundle
+# 1. Load image tags from deployment bundle
 source deploy-env.sh
 
-# 2. Fetch runtime database configuration string
+# 2. Fetch DB URL from SSM
 DB_URL=$(aws ssm get-parameter \
   --name "/gocart/prod/database_url" \
   --with-decryption \
@@ -18,10 +16,11 @@ DB_URL=$(aws ssm get-parameter \
   --output text \
   --region ap-south-1)
 
-# 3. Construct the .env workspace (Docker Compose automatically reads this)
-printf "DATABASE_URL=%s\nIMAGE_TAG=%s\n" "$DB_URL" "$IMAGE_TAG" > .env
+# 3. Write .env — both image tags + DB URL
+printf "NESTJS_IMAGE_TAG=%s\nNEXTJS_IMAGE_TAG=%s\nDATABASE_URL=%s\nNEXT_PUBLIC_API_URL=/api\n" \
+  "$NESTJS_IMAGE_TAG" "$NEXTJS_IMAGE_TAG" "$DB_URL" > .env
 
-# 4. Authenticate with GHCR using enterprise parameters
+# 4. Authenticate with GHCR
 aws ssm get-parameter \
   --name "/github/ghcr/token" \
   --with-decryption \
@@ -29,33 +28,44 @@ aws ssm get-parameter \
   --output text \
   --region ap-south-1 | docker login ghcr.io -u lijo-cloud --password-stdin
 
-# 🛑 REMOVED: The 'cat > docker-compose.yml' block is gone.
-# Your repository's docker-compose.yml file is now safely preserved!
-
-# 5. Lifecycle execution management
-docker compose down || true
+# 5. Pull and start both services
 docker compose pull
 docker compose up -d
 
-echo "Waiting for app..."
+echo "Waiting for services..."
 
-# ✅ Retry loop + rollback on failure
+# 6. Check NestJS on 3001
 HEALTHY=false
 for i in $(seq 1 12); do
-  if curl -sf http://localhost:3000/api/health; then
+  if curl -sf http://localhost:3001/api/health > /dev/null 2>&1; then
     HEALTHY=true; break
   fi
-  echo "Attempt $i failed, retrying in 10s..."
+  echo "NestJS attempt $i failed, retrying in 10s..."
   sleep 10
 done
-
 if [ "$HEALTHY" = false ]; then
-  echo "Health check failed — rolling back"
+  echo "❌ NestJS health check failed — rolling back"
   docker compose down
-  exit 1   # CodeDeploy sees non-zero exit and triggers auto-rollback
+  exit 1
 fi
+echo "✅ NestJS healthy"
 
-# 6. Disk optimization cleanup step
+# 7. Check Next.js on 3000
+HEALTHY=false
+for i in $(seq 1 12); do
+  if curl -sf http://localhost:3000/api/health > /dev/null 2>&1; then
+    HEALTHY=true; break
+  fi
+  echo "Next.js attempt $i failed, retrying in 10s..."
+  sleep 10
+done
+if [ "$HEALTHY" = false ]; then
+  echo "❌ Next.js health check failed — rolling back"
+  docker compose down
+  exit 1
+fi
+echo "✅ Next.js healthy"
+
+# 8. Cleanup
 docker image prune -af --filter "until=24h" || true
-
-echo "Deployment successful"
+echo "✅ Deployment successful"

@@ -3,8 +3,13 @@ os: linux
 files:
   - source: /
     destination: /app
+    overwrite: true
 hooks:
+  BeforeInstall:
+    - location: scripts/stop_app.sh
+      timeout: 60
+      runas: ubuntu
   ApplicationStart:
     - location: scripts/start_app.sh
       timeout: 300
-      runas: root
+      runas: ubuntu

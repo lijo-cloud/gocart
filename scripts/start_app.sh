@@ -39,12 +39,12 @@ aws ssm get-parameter \
   --with-decryption \
   --query "Parameter.Value" \
   --output text \
-  --region ap-south-1 | docker login ghcr.io -u lijo-cloud --password-stdin
+  --region ap-south-1 | sudo docker login ghcr.io -u lijo-cloud --password-stdin
 
 # 7. Pull and start both services
-# (If docker requires root on your server, you may need 'sudo docker compose')
-docker compose pull
-docker compose up -d
+# FIX: Added 'sudo' to allow the ubuntu user to access the docker daemon socket
+sudo docker compose pull
+sudo docker compose up -d
 
 echo "Waiting for services..."
 
@@ -81,5 +81,5 @@ fi
 echo "✅ Next.js healthy"
 
 # 10. Cleanup
-docker image prune -af --filter "until=24h" || true
+sudo docker image prune -af --filter "until=24h" || true
 echo "✅ Deployment successful"

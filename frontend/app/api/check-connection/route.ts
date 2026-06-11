@@ -12,11 +12,19 @@ export async function GET() {
 
   try {
     const startTime = Date.now();
+
+    // FIX: Using a traditional controller setup to avoid triggering modern TypeScript checks
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), 5000);
+
     // Added a short timeout configuration to prevent hanging builds if fallback triggers
     const response = await fetch(BACKEND_URL, { 
       cache: 'no-store',
-      signal: AbortSignal.timeout(5000) 
+      signal: controller.signal 
     });
+
+    clearTimeout(id); // Clear timeout on success
+    
     const backendData = await response.json();
     const duration = Date.now() - startTime;
 

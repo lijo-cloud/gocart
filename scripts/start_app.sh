@@ -27,8 +27,13 @@ DB_URL=$(aws ssm get-parameter \
   --region ap-south-1)
 
 # 5. Write .env (Now safe since ubuntu owns /app)
-printf "NESTJS_IMAGE_TAG=%s\nNEXTJS_IMAGE_TAG=%s\nDATABASE_URL=%s\nNEXT_PUBLIC_API_URL=/api\n" \
+# printf "NESTJS_IMAGE_TAG=%s\nNEXTJS_IMAGE_TAG=%s\nDATABASE_URL=%s\nNEXT_PUBLIC_API_URL=/api\n" \
+#   "$NESTJS_IMAGE_TAG" "$NEXTJS_IMAGE_TAG" "$DB_URL" > .env
+
+# Update the printf block in scripts/start_app.sh to include INTERNAL_BACKEND_URL
+printf "NESTJS_IMAGE_TAG=%s\nNEXTJS_IMAGE_TAG=%s\nDATABASE_URL=%s\nNEXT_PUBLIC_API_URL=/api\nINTERNAL_BACKEND_URL=http://localhost:3001/api/health\n" \
   "$NESTJS_IMAGE_TAG" "$NEXTJS_IMAGE_TAG" "$DB_URL" > .env
+
 
 # Copy the docker-compose.yml from the bundle to the /app directory
 cp "$BUNDLE_DIR/docker-compose.yml" /app/

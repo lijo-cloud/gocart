@@ -145,55 +145,54 @@ jobs:
           scp -o StrictHostKeyChecking=no docker-compose.yml ubuntu@${{ vars.STAGING_SERVER_IP }}:/app/docker-compose.yml
 
           ssh -o StrictHostKeyChecking=no ubuntu@${{ vars.STAGING_SERVER_IP }} \
-          "export SHORT_SHA='$SHORT_SHA'; \
-          export DB_URL='${{ env.DB_URL }}'; \
-          export GHCR_USERNAME='${{ github.actor }}'; \
-          export GHCR_TOKEN='${{ secrets.GHCR_PIPELINE_TOKEN }}'; \
-          bash -s" << 'EOF'
-            set -e
+          "SHORT_SHA='$SHORT_SHA' bash -s" << 'EOF'
+          set -e
 
-            sudo mkdir -p /app
-            sudo chown ubuntu:ubuntu /app
+          sudo mkdir -p /app
+          sudo chown ubuntu:ubuntu /app
+          cd /app
 
-            cd /app
+          echo "Fetching DB secret from SSM..."
 
-            if [ -z "$DB_URL" ]; then
-              echo "DB_URL is empty"
-              exit 1
+          DATABASE_URL=$(aws ssm get-parameter \
+            --name "/gocart/staging/database_url" \
+            --with-decryption \
+            --query "Parameter.Value" \
+            --output text \
+            --region ap-south-1)
+
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DB_URL is empty"
+            exit 1
+          fi
+
+          echo "Logging into GHCR..."
+          echo "${{ secrets.GHCR_PIPELINE_TOKEN }}" | docker login ghcr.io \
+            -u "${{ github.actor }}" \
+            --password-stdin
+
+          DATABASE_URL="$DATABASE_URL" \
+          NESTJS_IMAGE_TAG="ghcr.io/lijo-cloud/gocart-api:$SHORT_SHA" \
+          NEXTJS_IMAGE_TAG="ghcr.io/lijo-cloud/gocart-web:$SHORT_SHA" \
+          NEXT_PUBLIC_API_URL="/api" \
+          docker compose up -d --pull always
+
+          sleep 40
+
+          HEALTHY=false
+          for i in $(seq 1 30); do
+            if curl -f http://localhost:3000/api/health >/dev/null 2>&1; then
+              HEALTHY=true
+              break
             fi
+            sleep 10
+          done
 
-            printf "NESTJS_IMAGE_TAG=%s\nNEXTJS_IMAGE_TAG=%s\nDATABASE_URL=%s\nNEXT_PUBLIC_API_URL=/api\n" \
-              "ghcr.io/lijo-cloud/gocart-api:$SHORT_SHA" \
-              "ghcr.io/lijo-cloud/gocart-web:$SHORT_SHA" \
-              "$DB_URL" > /app/.env
-
-            echo "USER=$GHCR_USERNAME"
-            echo "TOKEN_LENGTH=${#GHCR_TOKEN}"
-
-            echo "$GHCR_TOKEN" | docker login ghcr.io \
-              -u "$GHCR_USERNAME" \
-              --password-stdin
-
-            docker compose pull --quiet
-            docker compose down --remove-orphans
-            docker compose up -d
-
-            sleep 40
-
-            HEALTHY=false
-            for i in $(seq 1 30); do
-              if curl -f http://localhost:3000/api/health >/dev/null 2>&1; then
-                HEALTHY=true
-                break
-              fi
-              sleep 10
-            done
-
-            if [ "$HEALTHY" = true ]; then
-              docker image prune -af --filter "until=24h" || true
-            else
-              exit 1
-            fi
+          if [ "$HEALTHY" = true ]; then
+            docker image prune -af --filter "until=24h" || true
+          else
+            exit 1
+          fi
           EOF
           
   approve_production:

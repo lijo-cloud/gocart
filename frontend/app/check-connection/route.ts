@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   // Use the local docker network alias or the public ALB path to reach NestJS
   // We use localhost:3001/api/health here because both live on the same host EC2
-  const BACKEND_URL = process.env.INTERNAL_BACKEND_URL || 'http://localhost:3001/api/health';
+  const BACKEND_URL = process.env.INTERNAL_BACKEND_URL || 'http://api:3001/api/health';
 
   try {
     const startTime = Date.now();

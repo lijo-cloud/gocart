@@ -144,25 +144,18 @@ jobs:
           SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)
           scp -o StrictHostKeyChecking=no docker-compose.yml ubuntu@${{ vars.STAGING_SERVER_IP }}:/app/docker-compose.yml
 
+          # Pass DB_URL and SHORT_SHA directly as environment variables into the SSH session
           ssh -o StrictHostKeyChecking=no ubuntu@${{ vars.STAGING_SERVER_IP }} \
-          "SHORT_SHA='$SHORT_SHA' bash -s" << 'EOF'
+          "SHORT_SHA='$SHORT_SHA' DATABASE_URL_FROM_SSM='${{ env.DB_URL }}' bash -s" << 'EOF'
           set -e
 
           sudo mkdir -p /app
           sudo chown ubuntu:ubuntu /app
           cd /app
 
-          echo "Fetching DB secret from SSM..."
-
-          DATABASE_URL=$(aws ssm get-parameter \
-            --name "/gocart/staging/database_url" \
-            --with-decryption \
-            --query "Parameter.Value" \
-            --output text \
-            --region ap-south-1)
-
-          if [ -z "$DATABASE_URL" ]; then
-            echo "DB_URL is empty"
+          # Check if the variable passed from GitHub Actions is empty
+          if [ -z "$DATABASE_URL_FROM_SSM" ]; then
+            echo "Error: DB_URL from GitHub Actions is empty"
             exit 1
           fi
 
@@ -171,7 +164,7 @@ jobs:
             -u "${{ github.actor }}" \
             --password-stdin
 
-          DATABASE_URL="$DATABASE_URL" \
+          DATABASE_URL="$DATABASE_URL_FROM_SSM" \
           NESTJS_IMAGE_TAG="ghcr.io/lijo-cloud/gocart-api:$SHORT_SHA" \
           NEXTJS_IMAGE_TAG="ghcr.io/lijo-cloud/gocart-web:$SHORT_SHA" \
           NEXT_PUBLIC_API_URL="/api" \

@@ -1,6 +1,10 @@
 // frontend/src/app/api/check-connection/route.ts
 import { NextResponse } from 'next/server';
 
+
+// FIX: Forces Next.js to skip build-time static generation for this route
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   // Use the local docker network alias or the public ALB path to reach NestJS
   // We use localhost:3001/api/health here because both live on the same host EC2
@@ -8,7 +12,11 @@ export async function GET() {
 
   try {
     const startTime = Date.now();
-    const response = await fetch(BACKEND_URL, { cache: 'no-store' });
+    // Added a short timeout configuration to prevent hanging builds if fallback triggers
+    const response = await fetch(BACKEND_URL, { 
+      cache: 'no-store',
+      signal: AbortSignal.timeout(5000) 
+    });
     const backendData = await response.json();
     const duration = Date.now() - startTime;
 

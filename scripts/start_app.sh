@@ -1,14 +1,24 @@
 #!/bin/bash
 set -e
-exec > >(tee -a /var/log/start_app.log) 2>&1
+
+# FIX 1: Write logs to a directory owned by ubuntu (or use sudo for /var/log)
+mkdir -p /home/ubuntu/logs
+exec > >(tee -a /home/ubuntu/logs/start_app.log) 2>&1
+
+# FIX 2: Ensure /app exists and is fully owned by the ubuntu user
+sudo mkdir -p /app
+sudo chown -R ubuntu:ubuntu /app
 cd /app
 
 echo "Starting deployment..."
 
-# 1. Load image tags from deployment bundle
-source deploy-env.sh
+# 3. Load image tags from deployment bundle
+# CodeDeploy extracts files to the deployment-archive directory. 
+# We reference the bundle's absolute path to find deploy-env.sh safely.
+BUNDLE_DIR=$(dirname "$(readlink -f "$0")")/..
+source "$BUNDLE_DIR/deploy-env.sh"
 
-# 2. Fetch DB URL from SSM
+# 4. Fetch DB URL from SSM
 DB_URL=$(aws ssm get-parameter \
   --name "/gocart/prod/database_url" \
   --with-decryption \
@@ -16,11 +26,14 @@ DB_URL=$(aws ssm get-parameter \
   --output text \
   --region ap-south-1)
 
-# 3. Write .env — both image tags + DB URL
+# 5. Write .env (Now safe since ubuntu owns /app)
 printf "NESTJS_IMAGE_TAG=%s\nNEXTJS_IMAGE_TAG=%s\nDATABASE_URL=%s\nNEXT_PUBLIC_API_URL=/api\n" \
   "$NESTJS_IMAGE_TAG" "$NEXTJS_IMAGE_TAG" "$DB_URL" > .env
 
-# 4. Authenticate with GHCR
+# Copy the docker-compose.yml from the bundle to the /app directory
+cp "$BUNDLE_DIR/docker-compose.yml" /app/
+
+# 6. Authenticate with GHCR
 aws ssm get-parameter \
   --name "/github/ghcr/token" \
   --with-decryption \
@@ -28,13 +41,14 @@ aws ssm get-parameter \
   --output text \
   --region ap-south-1 | docker login ghcr.io -u lijo-cloud --password-stdin
 
-# 5. Pull and start both services
+# 7. Pull and start both services
+# (If docker requires root on your server, you may need 'sudo docker compose')
 docker compose pull
 docker compose up -d
 
 echo "Waiting for services..."
 
-# 6. Check NestJS on 3001
+# 8. Check NestJS on 3001
 HEALTHY=false
 for i in $(seq 1 12); do
   if curl -sf http://localhost:3001/api/health > /dev/null 2>&1; then
@@ -50,7 +64,7 @@ if [ "$HEALTHY" = false ]; then
 fi
 echo "✅ NestJS healthy"
 
-# 7. Check Next.js on 3000
+# 9. Check Next.js on 3000
 HEALTHY=false
 for i in $(seq 1 12); do
   if curl -sf http://localhost:3000/api/health > /dev/null 2>&1; then
@@ -66,6 +80,6 @@ if [ "$HEALTHY" = false ]; then
 fi
 echo "✅ Next.js healthy"
 
-# 8. Cleanup
+# 10. Cleanup
 docker image prune -af --filter "until=24h" || true
 echo "✅ Deployment successful"

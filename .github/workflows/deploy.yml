@@ -170,7 +170,7 @@ jobs:
           NEXT_PUBLIC_API_URL="/api" \
           docker compose up -d --pull always
 
-          sleep 40
+          sleep 60
 
           HEALTHY=false
           for i in $(seq 1 30); do

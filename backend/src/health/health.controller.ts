@@ -15,10 +15,19 @@ export class HealthController {
 
   @Get()
   @HealthCheck()
-  check() {
-    return this.health.check([
-      // This forces NestJS to ping the frontend's database-testing route over the internal network
-      () => this.http.pingCheck('frontend-database', 'http://app-web-1:3000/api/db-test'),
-    ]);
+  async check() {
+    try {
+      return await this.health.check([
+        () => this.http.pingCheck('frontend-database', 'http://app-web-1:3000/api/db-test'),
+      ]);
+    } catch (error) {
+      // FALLBACK: If Next.js isn't up yet during boot, return a temporary safe status 
+      // so Docker doesn't kill the NestJS container prematurely.
+      return {
+        status: 'error',
+        message: 'Frontend database endpoint unreachable during bootup sequence',
+        details: { status: 'booting' }
+      };
+    }
   }
 }

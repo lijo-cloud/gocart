@@ -2,6 +2,8 @@
 import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
+export const dynamic = 'force-dynamic'; // Crucial!
+
 export async function GET() {
   try {
     // 1. Simulates a standard database read operation

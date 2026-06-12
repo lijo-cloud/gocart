@@ -1,3 +1,4 @@
+// backend/src/health/health.controller.ts
 import { Controller, Get } from '@nestjs/common';
 import {
   HealthCheck,
@@ -15,6 +16,9 @@ export class HealthController {
   @Get()
   @HealthCheck()
   check() {
-    return this.health.check([]);   // expand later with DB checks
+    return this.health.check([
+      // This forces NestJS to ping the frontend's database-testing route over the internal network
+      () => this.http.pingCheck('frontend-database', 'http://app-web-1:3000/api/db-test'),
+    ]);
   }
 }

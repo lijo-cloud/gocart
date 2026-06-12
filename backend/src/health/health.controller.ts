@@ -22,7 +22,7 @@ export class HealthController {
       ]);
     } catch (error) {
       // FALLBACK: If Next.js isn't up yet during boot, return a temporary safe status 
-      // so Docker doesn't kill the NestJS container prematurely.
+      // so Docker doesn't kill the NestJS container prematurely..
       return {
         status: 'error',
         message: 'Frontend database endpoint unreachable during bootup sequence',

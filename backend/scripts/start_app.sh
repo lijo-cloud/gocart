@@ -61,9 +61,14 @@ prometheus.remote_write "central" {
   }
 }
 
-/* Automated Docker Container Log Collector */
+/* Automated Docker Container Log Collector (FIXED VALIDATION METHOD) */
+discovery.docker "local_containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
 loki.source.docker "containers" {
   host       = "unix:///var/run/docker.sock"
+  targets    = discovery.docker.local_containers.targets
   forward_to = [loki.write.central.receiver]
 }
 

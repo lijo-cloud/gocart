@@ -1,0 +1,152 @@
+name: Backend Production Deployment
+
+on:
+#   push:
+#     branches:
+#       - main
+#     paths:
+#       - 'backend/**'
+    workflow_dispatch: #  Allows you to trigger it manually from the Actions tab
+    
+permissions:
+  id-token: write
+  contents: read
+  packages: write
+
+env:
+  IMAGE_NAME: ghcr.io/lijo-cloud/gocart-api
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install Dependencies
+        working-directory: backend
+        run: npm ci
+
+  build-and-push:
+    runs-on: ubuntu-latest
+    needs: test
+
+    outputs:
+      short_sha: ${{ steps.vars.outputs.short_sha }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: vars
+        run: |
+          SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)
+          echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_PIPELINE_TOKEN }}
+
+      - uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          pull: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.short_sha }}
+            ${{ env.IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  security_scan:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+
+    steps:
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_PIPELINE_TOKEN }}
+
+      - name: Scan Image with Trivy
+        uses: aquasecurity/trivy-action@v0.35.0
+        with:
+          image-ref: ghcr.io/lijo-cloud/gocart-api:${{ needs.build-and-push.outputs.short_sha }}
+          format: table
+          exit-code: '0'
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+
+  approve_production:
+    runs-on: ubuntu-latest
+    needs: security_scan
+    environment: production
+
+    steps:
+      - run: echo "Backend deployment approved"
+
+  deploy_production:
+    runs-on: ubuntu-latest
+    needs:
+      - build-and-push
+      - approve_production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Prepare Bundle
+        run: |
+          SHORT_SHA=${{ needs.build-and-push.outputs.short_sha }}
+
+          mkdir -p deploy-bundle
+
+          cat > deploy-bundle/deploy-env.sh << EOF
+          export NESTJS_IMAGE_TAG='ghcr.io/lijo-cloud/gocart-api:$SHORT_SHA'
+          EOF
+
+          cp backend/appspec.yml deploy-bundle/
+          cp -r backend/scripts deploy-bundle/
+
+      - name: Upload Artifacts to S3 and Trigger CodeDeploy
+        run: |
+          cd deploy-bundle
+          zip -r ../deploy-package.zip .
+          cd ..
+
+          SHORT_SHA=${{ needs.build-and-push.outputs.short_sha }}
+
+          S3_KEY="backend-$SHORT_SHA.zip"
+
+          aws s3 cp deploy-package.zip \
+            s3://${{ vars.AWS_DEPLOY_S3_BUCKET }}/backend/$S3_KEY
+
+          DEPLOYMENT_ID=$(aws deploy create-deployment \
+            --application-name gocart-production \
+            --deployment-group-name gocart-backend-prod \
+            --file-exists-behavior OVERWRITE \
+            --s3-location bucket=${{ vars.AWS_DEPLOY_S3_BUCKET }},bundleType=zip,key=backend/$S3_KEY \
+            --query deploymentId \
+            --output text)
+
+          echo "deployment_id=$DEPLOYMENT_ID" >> $GITHUB_ENV
+
+      - name: Monitor Deployment
+        run: |
+          aws deploy wait deployment-successful \
+            --deployment-id ${{ env.deployment_id }}

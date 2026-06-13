@@ -3,10 +3,8 @@ import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentation
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc';
 import { diag, DiagConsoleLogger, DiagLogLevel } from '@opentelemetry/api';
 
-// Optional: Enable internal OTel debugging logs if troubleshooting is needed
-diag.setLogger(diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.INFO));
+diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.INFO);
 
-// The default OTLP endpoint points locally because Alloy will act as the local proxy agent
 const oltpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317';
 
 const traceExporter = new OTLPTraceExporter({
@@ -18,13 +16,11 @@ export const otelSDK = new NodeSDK({
   traceExporter: traceExporter,
   instrumentations: [
     getNodeAutoInstrumentations({
-      // Protects database connection security string lookups
       '@opentelemetry/instrumentation-fs': { enabled: false },
     }),
   ],
 });
 
-// Gracefully handle shutdown signals
 process.on('SIGTERM', () => {
   otelSDK.shutdown()
     .then(() => console.log('SDK shut down successfully'))

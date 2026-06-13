@@ -98,3 +98,79 @@ echo "Backend healthy"
 sudo docker image prune -af --filter "until=24h" || true
 
 echo "Backend deployment successful"
+
+
+# ==============================================================================
+# AUTOMATED PRODUCTION MONITORING DEPLOYMENT (GRAFANA ALLOY)
+# ==============================================================================
+echo "Initializing centralized monitoring layer..."
+
+# 1. Register the official Grafana package repository keys (FIXED URL)
+sudo mkdir -p /etc/apt/keyrings/
+wget -q -O - https://grafana.com | gpg --dearmor | sudo tee /etc/apt/keyrings/grafana.gpg > /dev/null
+echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" | sudo tee /etc/apt/sources.list.d/grafana.list
+
+# 2. Update cache and install Grafana Alloy
+sudo apt-get update -y
+sudo apt-get install -y alloy
+
+# 3. Inject your Staging Server Private IP address as the monitoring core target
+MONITORING_HOST_IP="12.0.3.22"
+
+# 4. Generate the Alloy configuration file
+sudo cat <<EOF > /etc/alloy/config.alloy
+logging {
+  level  = "info"
+  format = "logfmt"
+}
+
+// System Resource Engine Scraping (Host CPU, Memory, Disk Metrics)
+prometheus.exporter.unix "local" {}
+
+prometheus.scrape "metrics" {
+  targets    = prometheus.exporter.unix.local.targets
+  forward_to = [prometheus.remote_write.central.receiver]
+}
+
+prometheus.remote_write "central" {
+  endpoint {
+    url = "http://${MONITORING_HOST_IP}:9090/api/v1/write"
+  }
+}
+
+// Automated Docker Container Runtime Log Shipping
+loki.source.docker "containers" {
+  host       = "unix:///var/run/docker.sock"
+  forward_to = [loki.write.central.receiver]
+}
+
+loki.write "central" {
+  endpoint {
+    url = "http://${MONITORING_HOST_IP}:3100/loki/api/v1/push"
+  }
+}
+
+// Open OTLP Receiver Matrix to listen for local NestJS Traces
+otelcol.receiver.otlp "default" {
+  grpc { endpoint = "0.0.0.0:4317" }
+  http { endpoint = "0.0.0.0:4318" }
+  output {
+    traces  = [otelcol.exporter.otlp.tempo.input]
+  }
+}
+
+otelcol.exporter.otlp "tempo" {
+  client {
+    endpoint = "${MONITORING_HOST_IP}:4317"
+    tls { insecure = true }
+  }
+}
+EOF
+
+# 5. Lock down access permissions and ignite the engine
+sudo systemctl daemon-reload
+sudo systemctl enable alloy
+sudo systemctl restart alloy
+
+echo "Centralized infrastructure monitoring successfully linked to ${MONITORING_HOST_IP}"
+# ==============================================================================

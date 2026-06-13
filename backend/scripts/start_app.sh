@@ -15,109 +15,24 @@ echo "Starting backend deployment..."
 BUNDLE_DIR=$(dirname "$(readlink -f "$0")")/..
 source "$BUNDLE_DIR/deploy-env.sh"
 
-# ----------------------------
-# Safety checks
-# ----------------------------
-if [ -z "$NESTJS_IMAGE_TAG" ]; then
-  echo "ERROR: NESTJS_IMAGE_TAG is NOT set"
-  exit 1
-fi
-
-echo "Using image: $NESTJS_IMAGE_TAG"
-
-# ----------------------------
-# Fetch secrets
-# ----------------------------
-DB_URL=$(aws ssm get-parameter \
-  --name "/gocart/prod/database_url" \
-  --with-decryption \
-  --query "Parameter.Value" \
-  --output text \
-  --region ap-south-1)
-
-aws ssm get-parameter \
-  --name "/github/ghcr/token" \
-  --with-decryption \
-  --query "Parameter.Value" \
-  --output text \
-  --region ap-south-1 | \
-  sudo docker login ghcr.io -u lijo-cloud --password-stdin
-
-# ----------------------------
-# Docker pull (FIXED)
-# ----------------------------
-echo "Pulling backend image..."
-sudo env NESTJS_IMAGE_TAG="$NESTJS_IMAGE_TAG" docker pull "$NESTJS_IMAGE_TAG"
-
-# ----------------------------
-# Stop old container
-# ----------------------------
-echo "Removing old backend container..."
-sudo docker rm -f gocart-api || true
-
-# ----------------------------
-# Start container (FIXED)
-# ----------------------------
-echo "Starting backend container..."
-
-sudo env NESTJS_IMAGE_TAG="$NESTJS_IMAGE_TAG" docker run -d \
-  --name gocart-api \
-  --restart unless-stopped \
-  -p 3001:3001 \
-  -e DATABASE_URL="$DB_URL" \
-  "$NESTJS_IMAGE_TAG"
-
-# ----------------------------
-# Health check
-# ----------------------------
-echo "Waiting for backend health check..."
-
-HEALTHY=false
-
-for i in $(seq 1 18); do
-  if curl -sf http://localhost:3001/api/health >/dev/null 2>&1; then
-    HEALTHY=true
-    break
-  fi
-
-  echo "Backend attempt $i failed, retrying..."
-  sleep 10
-done
-
-if [ "$HEALTHY" = false ]; then
-  echo "Backend health check failed"
-  sudo docker logs gocart-api || true
-  exit 1
-fi
-
-echo "Backend healthy"
-
-# ----------------------------
-# Cleanup
-# ----------------------------
-sudo docker image prune -af --filter "until=24h" || true
-
-echo "Backend deployment successful"
-
-
 # ==============================================================================
-# AUTOMATED PRODUCTION MONITORING DEPLOYMENT (GRAFANA ALLOY)
+# 1. INITIALIZE MONITORING FIRST (MOVED TO TOP TO CATCH CRASHES)
 # ==============================================================================
 echo "Initializing centralized monitoring layer..."
 
-# 1. Register the official Grafana package repository keys (FIXED URL)
+# Register the official Grafana package repository keys (FIXED URL)
 sudo mkdir -p /etc/apt/keyrings/
 wget -q -O - https://grafana.com | gpg --dearmor | sudo tee /etc/apt/keyrings/grafana.gpg > /dev/null
 echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" | sudo tee /etc/apt/sources.list.d/grafana.list
 
-# 2. Update cache and install Grafana Alloy
+# Update system cache and install Grafana Alloy
 sudo apt-get update -y
 sudo apt-get install -y alloy
 
-# 3. Inject your Staging Server Private IP address as the monitoring core target
+# Inject Staging Server Private IP address
 MONITORING_HOST_IP="12.0.3.22"
 
-# 4. Generate the Alloy configuration file
+# Generate the Alloy configuration profile
 sudo cat <<EOF > /etc/alloy/config.alloy
 logging {
   level  = "info"
@@ -167,10 +82,98 @@ otelcol.exporter.otlp "tempo" {
 }
 EOF
 
-# 5. Lock down access permissions and ignite the engine
+# Activate and start the Alloy service engine
 sudo systemctl daemon-reload
 sudo systemctl enable alloy
 sudo systemctl restart alloy
 
 echo "Centralized infrastructure monitoring successfully linked to ${MONITORING_HOST_IP}"
+
 # ==============================================================================
+# 2. APPLICATION RUN MANAGEMENT
+# ==============================================================================
+
+# ----------------------------
+# Safety checks
+# ----------------------------
+if [ -z "$NESTJS_IMAGE_TAG" ]; then
+  echo "ERROR: NESTJS_IMAGE_TAG is NOT set"
+  exit 1
+fi
+
+echo "Using image: $NESTJS_IMAGE_TAG"
+
+# ----------------------------
+# Fetch secrets
+# ----------------------------
+DB_URL=$(aws ssm get-parameter \
+  --name "/gocart/prod/database_url" \
+  --with-decryption \
+  --query "Parameter.Value" \
+  --output text \
+  --region ap-south-1)
+
+aws ssm get-parameter \
+  --name "/github/ghcr/token" \
+  --with-decryption \
+  --query "Parameter.Value" \
+  --output text \
+  --region ap-south-1 | \
+  sudo docker login ghcr.io -u lijo-cloud --password-stdin
+
+# ----------------------------
+# Docker pull 
+# ----------------------------
+echo "Pulling backend image..."
+sudo env NESTJS_IMAGE_TAG="$NESTJS_IMAGE_TAG" docker pull "$NESTJS_IMAGE_TAG"
+
+# ----------------------------
+# Stop old container
+# ----------------------------
+echo "Removing old backend container..."
+sudo docker rm -f gocart-api || true
+
+# ----------------------------
+# Start container (WITH NETWORK INJECTION WORKAROUND)
+# ----------------------------
+echo "Starting backend container..."
+
+sudo env NESTJS_IMAGE_TAG="$NESTJS_IMAGE_TAG" docker run -d \
+  --name gocart-api \
+  --restart unless-stopped \
+  -p 3001:3001 \
+  -e DATABASE_URL="$DB_URL" \
+  --add-host="api:13.232.80.25" \
+  "$NESTJS_IMAGE_TAG"
+
+# ----------------------------
+# Health check
+# ----------------------------
+echo "Waiting for backend health check..."
+
+HEALTHY=false
+
+for i in $(seq 1 18); do
+  if curl -sf http://localhost:3001/api/health >/dev/null 2>&1; then
+    HEALTHY=true
+    break
+  fi
+
+  echo "Backend attempt $i failed, retrying..."
+  sleep 10
+done
+
+if [ "$HEALTHY" = false ]; then
+  echo "Backend health check failed"
+  sudo docker logs gocart-api || true
+  exit 1
+fi
+
+echo "Backend healthy"
+
+# ----------------------------
+# Cleanup
+# ----------------------------
+sudo docker image prune -af --filter "until=24h" || true
+
+echo "Backend deployment successful"

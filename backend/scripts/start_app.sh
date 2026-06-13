@@ -20,17 +20,20 @@ source "$BUNDLE_DIR/deploy-env.sh"
 # ==============================================================================
 echo "Initializing centralized monitoring layer..."
 
-# Fix signature keyring registration
-sudo mkdir -p /etc/apt/keyrings/
-sudo curl -fsSL https://grafana.com | sudo gpg --dearmor --yes -o /etc/apt/keyrings/grafana.gpg
+# 1. Clean out any previous broken keys or legacy files to avoid cache lockups
+sudo rm -f /etc/apt/keyrings/grafana.gpg
+sudo rm -f /etc/apt/sources.list.d/grafana.list
 
-# Add the official repository using the explicit keyring pointer
+# 2. Create the keyring folder if missing
+sudo mkdir -p /etc/apt/keyrings/
+
+# 3. Modern, clean binary key download safe for Ubuntu 24.04 (No apt-key hacks)
+sudo curl -fsSL https://apt.grafana.com/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/grafana.gpg
+
+# 4. Bind the source library listing with the direct binary keyring link
 echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" | sudo tee /etc/apt/sources.list.d/grafana.list
 
-# Force key verification sync manually to bypass NO_PUBKEY locks
-sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 963FA27710458545 || true
-
-# Update and install Grafana Alloy
+# 5. Execute system cache update and pull Alloy
 sudo apt-get update -y
 sudo apt-get install -y alloy
 

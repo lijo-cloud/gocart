@@ -41,13 +41,13 @@ sudo apt-get install -y alloy
 MONITORING_HOST_IP="12.0.3.22"
 
 # Generate the Alloy configuration profile
-sudo cat <<EOF > /etc/alloy/config.alloy
+sudo cat << 'EOF' > /etc/alloy/config.alloy
 logging {
   level  = "info"
   format = "logfmt"
 }
 
-// System Resource Engine Scraping (Host CPU, Memory, Disk Metrics)
+/* Host Hardware Metrics Scraper */
 prometheus.exporter.unix "local" {}
 
 prometheus.scrape "metrics" {
@@ -57,11 +57,11 @@ prometheus.scrape "metrics" {
 
 prometheus.remote_write "central" {
   endpoint {
-    url = "http://${MONITORING_HOST_IP}:9090/api/v1/write"
+    url = "http://12.0.3"
   }
 }
 
-// Automated Docker Container Runtime Log Shipping
+/* Automated Docker Container Log Collector */
 loki.source.docker "containers" {
   host       = "unix:///var/run/docker.sock"
   forward_to = [loki.write.central.receiver]
@@ -69,11 +69,11 @@ loki.source.docker "containers" {
 
 loki.write "central" {
   endpoint {
-    url = "http://${MONITORING_HOST_IP}:3100/loki/api/v1/push"
+    url = "http://12.0.3"
   }
 }
 
-// Open OTLP Receiver Matrix to listen for local NestJS Traces
+/* Open OTLP Trace Receivers Matrix */
 otelcol.receiver.otlp "default" {
   grpc { endpoint = "0.0.0.0:4317" }
   http { endpoint = "0.0.0.0:4318" }
@@ -84,7 +84,7 @@ otelcol.receiver.otlp "default" {
 
 otelcol.exporter.otlp "tempo" {
   client {
-    endpoint = "${MONITORING_HOST_IP}:4317"
+    endpoint = "12.0.3.22:4317"
     tls { insecure = true }
   }
 }

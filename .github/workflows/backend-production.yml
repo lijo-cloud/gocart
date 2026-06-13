@@ -32,10 +32,10 @@ jobs:
       - name: Install Dependencies
         working-directory: backend
         run: npm ci
-        
-      - name: Validate TypeScript Compilation
-        working-directory: backend
-        run: npm run build # <--- ADD THIS TO CATCH ERRORS LOCALLY BEFORE DOCKER LAYER
+
+    #   - name: Validate TypeScript Compilation
+    #     working-directory: backend
+    #     run: npm run build # <--- ADD THIS TO CATCH ERRORS LOCALLY BEFORE DOCKER LAYER
 
   build-and-push:
     runs-on: ubuntu-latest

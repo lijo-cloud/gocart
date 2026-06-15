@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Logger } from '@nestjs/common';
 import {
   HealthCheck,
   HealthCheckService,
@@ -7,6 +7,8 @@ import {
 
 @Controller('api/health')
 export class HealthController {
+  private readonly logger = new Logger(HealthController.name);
+
   constructor(
     private health: HealthCheckService,
     private http: HttpHealthIndicator,
@@ -15,17 +17,15 @@ export class HealthController {
   @Get()
   @HealthCheck()
   async check() {
-    // Do NOT add :3000 or :3001 here. Let the ALB handle it via port 80.
     const frontendUrl = process.env.FRONTEND_URL || 'http://test-lb-for-ec2-demo-1863212643.ap-south-1.elb.amazonaws.com';
-
     try {
-      return await this.health.check([
-        // This pings the main frontend homepage via the ALB over standard port 80
+      const result = await this.health.check([
         () => this.http.pingCheck('frontend-app', `${frontendUrl}`),
       ]);
+      this.logger.log('Health check passed');
+      return result;
     } catch (error) {
-      // FALLBACK: If Next.js isn't up yet during boot, return a temporary safe status 
-      // so Docker doesn't kill the NestJS container prematurely..
+      this.logger.warn('Frontend unreachable during health check');
       return {
         status: 'error',
         message: 'Frontend application endpoint unreachable during bootup sequence',

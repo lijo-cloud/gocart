@@ -15,11 +15,6 @@ echo "Starting backend deployment..."
 BUNDLE_DIR=$(dirname "$(readlink -f "$0")")/..
 source "$BUNDLE_DIR/deploy-env.sh"
 
-
-# ==============================================================================
-# 2. APPLICATION RUN MANAGEMENT
-# ==============================================================================
-
 # ----------------------------
 # Safety checks
 # ----------------------------
@@ -49,10 +44,10 @@ aws ssm get-parameter \
   sudo docker login ghcr.io -u lijo-cloud --password-stdin
 
 # ----------------------------
-# Docker pull 
+# Docker pull
 # ----------------------------
 echo "Pulling backend image..."
-sudo env NESTJS_IMAGE_TAG="$NESTJS_IMAGE_TAG" docker pull "$NESTJS_IMAGE_TAG"
+sudo docker pull "$NESTJS_IMAGE_TAG"
 
 # ----------------------------
 # Stop old container
@@ -61,15 +56,16 @@ echo "Removing old backend container..."
 sudo docker rm -f gocart-api || true
 
 # ----------------------------
-# Start container (WITH NETWORK INJECTION WORKAROUND)
+# Start container
 # ----------------------------
 echo "Starting backend container..."
 
-sudo env NESTJS_IMAGE_TAG="$NESTJS_IMAGE_TAG" docker run -d \
+sudo docker run -d \
   --name gocart-api \
   --restart unless-stopped \
   -p 3001:3001 \
   -e DATABASE_URL="$DB_URL" \
+  -e OTEL_EXPORTER_OTLP_ENDPOINT="http://172.17.0.1:4317" \
   --add-host="api:13.232.80.25" \
   "$NESTJS_IMAGE_TAG"
 
@@ -77,7 +73,6 @@ sudo env NESTJS_IMAGE_TAG="$NESTJS_IMAGE_TAG" docker run -d \
 # Health check
 # ----------------------------
 echo "Waiting for backend health check..."
-
 HEALTHY=false
 
 for i in $(seq 1 18); do
@@ -85,7 +80,6 @@ for i in $(seq 1 18); do
     HEALTHY=true
     break
   fi
-
   echo "Backend attempt $i failed, retrying..."
   sleep 10
 done

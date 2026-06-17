@@ -32,6 +32,10 @@ jobs:
       - name: Install Dependencies
         working-directory: backend
         run: npm ci
+
+      - name: Generate Prisma Client
+        working-directory: backend
+        run: npx prisma generate
         
       - name: Validate TypeScript Compilation
         working-directory: backend

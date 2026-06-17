@@ -27,4 +27,4 @@ HEALTHCHECK --interval=10s --timeout=5s --start-period=60s --retries=5 \
 USER nestjs
 EXPOSE 3001
 
-CMD ["node", "dist/src/main"]
+CMD ["node", "dist/main"]

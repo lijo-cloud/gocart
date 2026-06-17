@@ -17,5 +17,5 @@ jobs:
           exclude-tags: 'latest' #  DO NOT delete the latest production tag
           keep-n-tagged: 5 #  Keep only the 5 most recent SHA versions
           keep-n-untagged: 0 #  Instantly wipe out untagged cache fragments
-          dry-run: true    #  Change to 'false' ONLY after verifying logs look correct
+          dry-run: false    #  Change to 'false' ONLY after verifying logs look correct
           log-level: debug #  Optional: Use this if you want absolute maximum log detail

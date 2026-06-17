@@ -25,9 +25,16 @@ jobs:
       - name: Delete all Actions caches
         run: |
           gh extension install actions/gh-actions-cache
-          CACHES=$(gh actions-cache list -R ${{ github.repository }} --limit 100 | cut -f1)
-          for cache in $CACHES; do
-            gh actions-cache delete "$cache" -R ${{ github.repository }} --confirm
+          
+          while true; do
+            CACHES=$(gh actions-cache list -R ${{ github.repository }} --limit 100 | cut -f1)
+            if [ -z "$CACHES" ]; then
+              echo "All caches deleted"
+              break
+            fi
+            for cache in $CACHES; do
+              gh actions-cache delete "$cache" -R ${{ github.repository }} --confirm || true
+            done
           done
         env:
           GH_TOKEN: ${{ secrets.GHCR_PIPELINE_TOKEN }}

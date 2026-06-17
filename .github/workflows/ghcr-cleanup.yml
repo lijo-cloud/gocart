@@ -19,3 +19,15 @@ jobs:
           keep-n-untagged: 0 #  Instantly wipe out untagged cache fragments
           dry-run: false    #  Change to 'false' ONLY after verifying logs look correct
           log-level: debug #  Optional: Use this if you want absolute maximum log detail
+  clean-actions-cache:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete all Actions caches
+        run: |
+          gh extension install actions/gh-actions-cache
+          CACHES=$(gh actions-cache list -R ${{ github.repository }} --limit 100 | cut -f1)
+          for cache in $CACHES; do
+            gh actions-cache delete "$cache" -R ${{ github.repository }} --confirm
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GHCR_PIPELINE_TOKEN }}
